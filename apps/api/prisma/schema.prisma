@@ -1,7 +1,18 @@
-// Schema Prisma da Plataforma Defesa Civil MG.
-// Fase 1 (fundacao): apenas datasource e generator.
-// Os models de dominio (usuarios, ocorrencias, municipios, etc.)
-// serao adicionados no passo 2 do roadmap de arquitetura.
+// =============================================================================
+// Schema Prisma — Plataforma Defesa Civil MG (Passo 2: Nucleo de dados)
+// -----------------------------------------------------------------------------
+// Modela as entidades da secao 8 da arquitetura:
+//  - Territorio (UF / Regional-REDEC / Municipio-IBGE / COMPDEC)
+//  - RBAC (Perfil / Permissao / Usuario com escopo multi-tenant)
+//  - Competencia (periodo de coleta) — vinculo obrigatorio em form/submissao
+//  - Motor de formularios (Formulario / FormularioVersao com schema JSONB)
+//  - Submissao (snapshot do respondente + protocolo + dados JSONB) e revisao
+//  - Importacao em massa (lote + erros) e geracao atomica de protocolo
+//  - Arquivo (storage) e LogAuditoria
+//
+// Convencoes: campos em camelCase no Prisma; colunas/tabelas em snake_case
+// (@map/@@map); datas em created_at/updated_at; JSON -> jsonb no Postgres.
+// =============================================================================
 
 datasource db {
   provider = "postgresql"
@@ -12,15 +23,426 @@ generator client {
   provider = "prisma-client-js"
 }
 
-/// Model PLACEHOLDER apenas para permitir a geracao do Prisma Client na
-/// Fundacao (sem models o `prisma generate` falha e o PrismaClient nao
-/// inicializa, impedindo o boot da API). Os models reais de dominio
-/// (UF, Municipio, Regional, Compdec, Usuario, Perfil, Competencia,
-/// FormularioVersao, Submissao, RevisaoSubmissao, etc.) entram no passo 2
-/// e SUBSTITUEM este marcador.
-model MarcadorFundacao {
-  id       Int      @id @default(autoincrement())
-  criadoEm DateTime @default(now())
+// ============================ ENUMS ==========================================
 
-  @@map("_marcador_fundacao")
+/// Escopo de acesso do usuario (multi-tenant hierarquico).
+enum EscopoUsuario {
+  ESTADUAL
+  REGIONAL
+  MUNICIPAL
+}
+
+/// Ciclo de vida de uma competencia (periodo de coleta).
+enum CompetenciaStatus {
+  PLANEJADA
+  ABERTA
+  ENCERRADA
+}
+
+/// Situacao de um formulario e de suas versoes.
+enum FormularioStatus {
+  RASCUNHO
+  PUBLICADO
+  ARQUIVADO
+}
+
+/// Situacao de uma submissao (resposta de um municipio).
+enum SubmissaoStatus {
+  RASCUNHO
+  ENVIADA
+  EM_ANALISE
+  CORRECAO_SOLICITADA
+  REVISADA
+  VALIDADA
+  REJEITADA
+}
+
+/// Acao registrada no historico de revisao de uma submissao.
+enum RevisaoAcao {
+  SOLICITOU_CORRECAO
+  REVISOU
+  VALIDOU
+  REJEITOU
+}
+
+/// Situacao de um lote de importacao em massa via Excel.
+enum ImportacaoStatus {
+  PENDENTE
+  PROCESSANDO
+  CONCLUIDA
+  CONCLUIDA_COM_ERROS
+  FALHOU
+}
+
+// ========================= TERRITORIO ========================================
+
+/// Unidade Federativa. `id` = codigo IBGE de 2 digitos (ex.: 31 = MG).
+model Uf {
+  id           Int      @id
+  sigla        String   @unique
+  nome         String
+  criadoEm     DateTime @default(now()) @map("created_at")
+  atualizadoEm DateTime @updatedAt @map("updated_at")
+
+  municipios Municipio[]
+  regionais  Regional[]
+  usuarios   Usuario[]
+
+  @@map("ufs")
+}
+
+/// Regional de Defesa Civil (REDEC). Mapeamento municipio->REDEC e
+/// populado pela CEDEC (nao vem do IBGE); por isso a FK em Municipio e opcional.
+model Regional {
+  id           String   @id @default(cuid())
+  nome         String
+  sigla        String?
+  ufId         Int      @map("uf_id")
+  criadoEm     DateTime @default(now()) @map("created_at")
+  atualizadoEm DateTime @updatedAt @map("updated_at")
+
+  uf         Uf          @relation(fields: [ufId], references: [id])
+  municipios Municipio[]
+  usuarios   Usuario[]
+
+  @@unique([ufId, nome])
+  @@index([ufId])
+  @@map("regionais")
+}
+
+/// Municipio. `id` = codigo IBGE de 7 digitos (ex.: 3106200 = Belo Horizonte).
+model Municipio {
+  id           Int      @id
+  nome         String
+  ufId         Int      @map("uf_id")
+  regionalId   String?  @map("regional_id")
+  criadoEm     DateTime @default(now()) @map("created_at")
+  atualizadoEm DateTime @updatedAt @map("updated_at")
+
+  uf              Uf               @relation(fields: [ufId], references: [id])
+  regional        Regional?        @relation(fields: [regionalId], references: [id])
+  compdec         Compdec?
+  usuarios        Usuario[]
+  submissoes      Submissao[]
+  importacaoLotes ImportacaoLote[]
+
+  @@index([ufId])
+  @@index([regionalId])
+  @@index([nome])
+  @@map("municipios")
+}
+
+/// Coordenadoria Municipal de Protecao e Defesa Civil (1:1 com Municipio).
+/// Alimenta o drawer do Painel Estadual (coordenador/telefone/email).
+model Compdec {
+  id              String   @id @default(cuid())
+  municipioId     Int      @unique @map("municipio_id")
+  coordenadorNome String?  @map("coordenador_nome")
+  telefone        String?
+  email           String?
+  criadoEm        DateTime @default(now()) @map("created_at")
+  atualizadoEm    DateTime @updatedAt @map("updated_at")
+
+  municipio Municipio @relation(fields: [municipioId], references: [id])
+
+  @@map("compdecs")
+}
+
+// ========================= RBAC / USUARIOS ===================================
+
+/// Perfil de acesso (papel). `codigo` casa com PerfilUsuario de @dcmg/contracts.
+model Perfil {
+  id           String   @id @default(cuid())
+  codigo       String   @unique
+  nome         String
+  nivel        Int
+  criadoEm     DateTime @default(now()) @map("created_at")
+  atualizadoEm DateTime @updatedAt @map("updated_at")
+
+  permissoes Permissao[] @relation("PerfilPermissoes")
+  usuarios   Usuario[]
+
+  @@map("perfis")
+}
+
+/// Permissao granular no formato "modulo.acao" (ex.: formularios.publicar).
+model Permissao {
+  id        String   @id @default(cuid())
+  chave     String   @unique
+  descricao String?
+  criadoEm  DateTime @default(now()) @map("created_at")
+
+  perfis Perfil[] @relation("PerfilPermissoes")
+
+  @@map("permissoes")
+}
+
+/// Usuario (agente das COMPDECs/CEDEC). Escopo define o alcance multi-tenant.
+model Usuario {
+  id             String        @id @default(cuid())
+  nome           String
+  cpf            String        @unique
+  email          String        @unique
+  senhaHash      String        @map("senha_hash")
+  cargo          String?
+  telefone       String?
+  perfilId       String        @map("perfil_id")
+  escopo         EscopoUsuario
+  ufId           Int?          @map("uf_id")
+  regionalId     String?       @map("regional_id")
+  municipioId    Int?          @map("municipio_id")
+  ativo          Boolean       @default(true)
+  ultimoAcessoEm DateTime?     @map("ultimo_acesso_em")
+  criadoEm       DateTime      @default(now()) @map("created_at")
+  atualizadoEm   DateTime      @updatedAt @map("updated_at")
+
+  perfil      Perfil             @relation(fields: [perfilId], references: [id])
+  uf          Uf?                @relation(fields: [ufId], references: [id])
+  regional    Regional?          @relation(fields: [regionalId], references: [id])
+  municipio   Municipio?         @relation(fields: [municipioId], references: [id])
+  submissoes  Submissao[]
+  revisoes    RevisaoSubmissao[]
+  importacoes ImportacaoLote[]
+  logs        LogAuditoria[]
+
+  @@index([perfilId])
+  @@index([municipioId])
+  @@index([regionalId])
+  @@map("usuarios")
+}
+
+// ========================= COMPETENCIA =======================================
+
+/// Periodo de coleta. Todo FormularioVersao publicado e toda Submissao
+/// sao vinculados a uma Competencia; o Painel filtra por competencia.
+model Competencia {
+  id           String            @id @default(cuid())
+  nome         String
+  ano          Int
+  dataInicio   DateTime          @map("data_inicio")
+  dataFim      DateTime          @map("data_fim")
+  status       CompetenciaStatus @default(PLANEJADA)
+  criadoEm     DateTime          @default(now()) @map("created_at")
+  atualizadoEm DateTime          @updatedAt @map("updated_at")
+
+  formularioVersoes FormularioVersao[]
+  submissoes        Submissao[]
+
+  @@index([ano])
+  @@index([status])
+  @@map("competencias")
+}
+
+// ===================== MOTOR DE FORMULARIOS ==================================
+
+/// Formulario dinamico (metadados). O schema dos campos fica na versao.
+model Formulario {
+  id           String           @id @default(cuid())
+  nome         String
+  descricao    String?
+  categoria    String?
+  status       FormularioStatus @default(RASCUNHO)
+  criadoEm     DateTime         @default(now()) @map("created_at")
+  atualizadoEm DateTime         @updatedAt @map("updated_at")
+
+  versoes FormularioVersao[]
+
+  @@map("formularios")
+}
+
+/// Versao imutavel de um formulario. `schema` (JSONB) descreve secoes/campos.
+/// `competenciaId` e obrigatorio na publicacao (validado na aplicacao).
+model FormularioVersao {
+  id            String           @id @default(cuid())
+  formularioId  String           @map("formulario_id")
+  versao        Int
+  schema        Json
+  competenciaId String?          @map("competencia_id")
+  status        FormularioStatus @default(RASCUNHO)
+  publicadoEm   DateTime?        @map("publicado_em")
+  criadoEm      DateTime         @default(now()) @map("created_at")
+  atualizadoEm  DateTime         @updatedAt @map("updated_at")
+
+  formulario      Formulario       @relation(fields: [formularioId], references: [id])
+  competencia     Competencia?     @relation(fields: [competenciaId], references: [id])
+  submissoes      Submissao[]
+  importacaoLotes ImportacaoLote[]
+
+  @@unique([formularioId, versao])
+  @@index([competenciaId])
+  @@map("formulario_versoes")
+}
+
+// ========================= SUBMISSOES ========================================
+
+/// Resposta de um municipio. Grava um SNAPSHOT imutavel do respondente
+/// (nome/CPF/cargo/contato/IP/user-agent) alem da FK do autor, e um protocolo
+/// unico (MG-AAAA-NNNNNNNN). `dados` (JSONB) sao as respostas do schema.
+model Submissao {
+  id                  String          @id @default(cuid())
+  protocolo           String          @unique
+  municipioId         Int             @map("municipio_id")
+  formularioVersaoId  String          @map("formulario_versao_id")
+  competenciaId       String          @map("competencia_id")
+  autorId             String          @map("autor_id")
+  nomeRespondente     String          @map("nome_respondente")
+  cpfRespondente      String          @map("cpf_respondente")
+  cargoRespondente    String?         @map("cargo_respondente")
+  emailRespondente    String?         @map("email_respondente")
+  telefoneRespondente String?         @map("telefone_respondente")
+  ipResposta          String?         @map("ip_resposta")
+  userAgent           String?         @map("user_agent")
+  status              SubmissaoStatus @default(RASCUNHO)
+  dados               Json
+  importacaoLoteId    String?         @map("importacao_lote_id")
+  enviadoEm           DateTime?       @map("enviado_em")
+  validadoEm          DateTime?       @map("validado_em")
+  criadoEm            DateTime        @default(now()) @map("created_at")
+  atualizadoEm        DateTime        @updatedAt @map("updated_at")
+
+  municipio        Municipio          @relation(fields: [municipioId], references: [id])
+  formularioVersao FormularioVersao   @relation(fields: [formularioVersaoId], references: [id])
+  competencia      Competencia        @relation(fields: [competenciaId], references: [id])
+  autor            Usuario            @relation(fields: [autorId], references: [id])
+  importacaoLote   ImportacaoLote?    @relation(fields: [importacaoLoteId], references: [id])
+  revisoes         RevisaoSubmissao[]
+  arquivos         SubmissaoArquivo[]
+
+  @@index([municipioId])
+  @@index([competenciaId])
+  @@index([formularioVersaoId])
+  @@index([status])
+  @@index([municipioId, competenciaId])
+  @@index([municipioId, formularioVersaoId, competenciaId])
+  @@map("submissoes")
+}
+
+/// Historico imutavel de revisao de uma submissao (uma linha por acao),
+/// com snapshot dos dados antes da alteracao. Nao sobrescreve a resposta.
+model RevisaoSubmissao {
+  id            String      @id @default(cuid())
+  submissaoId   String      @map("submissao_id")
+  revisorId     String      @map("revisor_id")
+  acao          RevisaoAcao
+  comentario    String?
+  dadosSnapshot Json?       @map("dados_snapshot")
+  criadoEm      DateTime    @default(now()) @map("created_at")
+
+  submissao Submissao @relation(fields: [submissaoId], references: [id])
+  revisor   Usuario   @relation(fields: [revisorId], references: [id])
+
+  @@index([submissaoId])
+  @@map("revisoes_submissao")
+}
+
+/// Anexos de uma submissao (campos do tipo ARQUIVO no schema do formulario):
+/// vincula um Arquivo do storage a uma Submissao, identificando o campo.
+model SubmissaoArquivo {
+  id          String   @id @default(cuid())
+  submissaoId String   @map("submissao_id")
+  arquivoId   String   @map("arquivo_id")
+  chaveCampo  String?  @map("chave_campo")
+  criadoEm    DateTime @default(now()) @map("created_at")
+
+  submissao Submissao @relation(fields: [submissaoId], references: [id])
+  arquivo   Arquivo   @relation(fields: [arquivoId], references: [id])
+
+  @@index([submissaoId])
+  @@index([arquivoId])
+  @@map("submissao_arquivos")
+}
+
+// ==================== IMPORTACAO EM MASSA ====================================
+
+/// Lote de importacao de dados via planilha Excel (Fluxo B).
+model ImportacaoLote {
+  id                 String           @id @default(cuid())
+  formularioVersaoId String           @map("formulario_versao_id")
+  competenciaId      String           @map("competencia_id")
+  municipioId        Int?             @map("municipio_id")
+  autorId            String           @map("autor_id")
+  arquivoId          String?          @map("arquivo_id")
+  status             ImportacaoStatus @default(PENDENTE)
+  totalLinhas        Int              @default(0) @map("total_linhas")
+  linhasValidas      Int              @default(0) @map("linhas_validas")
+  linhasComErro      Int              @default(0) @map("linhas_com_erro")
+  criadoEm           DateTime         @default(now()) @map("created_at")
+  atualizadoEm       DateTime         @updatedAt @map("updated_at")
+
+  formularioVersao FormularioVersao @relation(fields: [formularioVersaoId], references: [id])
+  municipio        Municipio?       @relation(fields: [municipioId], references: [id])
+  autor            Usuario          @relation(fields: [autorId], references: [id])
+  arquivo          Arquivo?         @relation(fields: [arquivoId], references: [id])
+  submissoes       Submissao[]
+  erros            ErroImportacao[]
+
+  @@index([formularioVersaoId])
+  @@index([status])
+  @@map("importacao_lotes")
+}
+
+/// Erro de validacao de uma linha durante a importacao (relatorio de erros).
+model ErroImportacao {
+  id       String   @id @default(cuid())
+  loteId   String   @map("lote_id")
+  linha    Int
+  coluna   String?
+  mensagem String
+  criadoEm DateTime @default(now()) @map("created_at")
+
+  lote ImportacaoLote @relation(fields: [loteId], references: [id])
+
+  @@index([loteId])
+  @@map("erros_importacao")
+}
+
+// ===================== PROTOCOLO / ARQUIVO / AUDITORIA =======================
+
+/// Contador para geracao ATOMICA do protocolo por UF+ano (MG-AAAA-NNNNNNNN).
+model ProtocoloSequencia {
+  id           String   @id @default(cuid())
+  ufSigla      String   @map("uf_sigla") // armazena Uf.sigla (ex.: "MG"), nao o codigo IBGE
+  ano          Int
+  ultimoNumero Int      @default(0) @map("ultimo_numero")
+  atualizadoEm DateTime @updatedAt @map("updated_at")
+
+  @@unique([ufSigla, ano])
+  @@map("protocolo_sequencias")
+}
+
+/// Metadados de arquivo no storage (abstracao local | s3-compativel).
+model Arquivo {
+  id           String   @id @default(cuid())
+  chave        String   @unique
+  nomeOriginal String   @map("nome_original")
+  mimeType     String?  @map("mime_type")
+  tamanhoBytes Int?     @map("tamanho_bytes")
+  driver       String
+  criadoEm     DateTime @default(now()) @map("created_at")
+
+  importacaoLotes   ImportacaoLote[]
+  submissaoArquivos SubmissaoArquivo[]
+
+  @@map("arquivos")
+}
+
+/// Log de auditoria imutavel (responsabilizacao LGPD).
+model LogAuditoria {
+  id         String   @id @default(cuid())
+  atorId     String?  @map("ator_id")
+  acao       String
+  entidade   String
+  entidadeId String?  @map("entidade_id")
+  antes      Json?
+  depois     Json?
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  criadoEm   DateTime @default(now()) @map("created_at")
+
+  ator Usuario? @relation(fields: [atorId], references: [id])
+
+  @@index([entidade, entidadeId])
+  @@index([atorId])
+  @@index([criadoEm])
+  @@map("logs_auditoria")
 }
