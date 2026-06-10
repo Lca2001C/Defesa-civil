@@ -1,0 +1,5 @@
+# Workspaces do monorepo Defesa Civil MG.
+# Aplicacoes (web, api) e pacotes compartilhados (contracts).
+packages:
+  - "apps/*"
+  - "packages/*"

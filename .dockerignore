@@ -1,0 +1,35 @@
+# Evita enviar arquivos desnecessarios para o contexto de build das imagens.
+node_modules
+**/node_modules
+
+# Saidas de build (geradas dentro da imagem)
+dist
+build
+**/dist
+**/build
+*.tsbuildinfo
+
+# Variaveis de ambiente e segredos
+.env
+.env.local
+
+# Git e metadados
+.git
+.gitignore
+.gitattributes
+
+# Logs e cobertura
+*.log
+coverage
+**/coverage
+
+# Documentacao e infra que nao entram na imagem
+README.md
+**/*.md
+infra/nginx/certs
+
+# Sistema operacional / editores
+.DS_Store
+Thumbs.db
+.idea
+.vscode

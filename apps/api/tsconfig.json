@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // A base e voltada a bundler (module ESNext / moduleResolution Bundler),
+    // adequada ao Vite no front. A API (NestJS, CommonJS) sobrescreve para
+    // NodeNext: emite CommonJS (apps/api nao tem "type":"module"), e compativel
+    // com Nest e nao usa o "node10" deprecado.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "paths": {
+      "@dcmg/contracts": ["../../packages/contracts/src"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

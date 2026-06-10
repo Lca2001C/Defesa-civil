@@ -1,0 +1,34 @@
+# Dependencias
+node_modules/
+
+# Saidas de build
+dist/
+build/
+
+# Variaveis de ambiente (NUNCA versionar segredos reais)
+.env
+.env.local
+
+# Cobertura de testes
+coverage/
+
+# Logs
+*.log
+
+# Certificados de TLS gerados localmente para o Nginx
+infra/nginx/certs/
+
+# Artefatos do Prisma gerados em runtime de dev
+**/prisma/generated/
+
+# Cache de ferramentas
+.cache/
+.turbo/
+*.tsbuildinfo
+
+# Sistema operacional / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

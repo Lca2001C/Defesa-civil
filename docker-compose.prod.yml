@@ -1,0 +1,59 @@
+# =============================================================================
+# Plataforma Defesa Civil MG — Override de PRODUCAO (Fase 2)
+# -----------------------------------------------------------------------------
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Objetivos deste override:
+#   - Web publica diretamente nas portas 80 e 443 (HTTP/HTTPS).
+#   - Monta os certificados TLS em ./infra/nginx/certs.
+#   - APP_ENV=production.
+#   - Sem ngrok (o profile "tunnel" simplesmente nao e ativado em prod).
+#   - Sem publicar portas internas (4000 da API, 5432 do Postgres,
+#     6379 do Redis) para fora do host por seguranca.
+#
+# TLS / Certificados gratuitos (Let's Encrypt via Certbot):
+#   1. Emitir o certificado uma vez, p.ex. com o container oficial certbot:
+#        docker run --rm -it \
+#          -v "$PWD/infra/nginx/certs:/etc/letsencrypt" \
+#          -v "$PWD/infra/nginx/certs-www:/var/www/certbot" \
+#          certbot/certbot certonly --webroot -w /var/www/certbot \
+#          -d defesacivil.mg.gov.br
+#   2. Os arquivos fullchain.pem e privkey.pem ficam em
+#      ./infra/nginx/certs e devem ser referenciados pelo nginx.conf de prod.
+#   3. Renovacao automatica: agendar "certbot renew" (cron/systemd timer) e
+#      recarregar o Nginx (docker compose exec web nginx -s reload).
+# =============================================================================
+
+services:
+  postgres:
+    # Em producao NAO publicamos a porta do banco para o host.
+    # O "!reset" zera a lista de ports herdada do compose base.
+    ports: !reset []
+
+  redis:
+    # Idem: Redis fica acessivel apenas na rede interna do Compose.
+    ports: !reset []
+
+  api:
+    environment:
+      APP_ENV: production
+      NODE_ENV: production
+    # A API tambem deixa de ser publicada; o acesso e via proxy do Nginx.
+    ports: !reset []
+
+  web:
+    environment:
+      APP_ENV: production
+      API_BASE_URL: /api
+      SOCKET_PATH: /socket.io
+    # O Nginx roda nao-root e escuta em 8080 (HTTP) e 8443 (HTTPS); o host
+    # publica as portas padrao 80 e 443 mapeando para essas portas internas.
+    ports: !reset
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      # Configuracao de producao com TLS (sobrepoe a conf padrao da imagem).
+      - ./infra/nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      # Certificados TLS montados como somente-leitura dentro do container.
+      - ./infra/nginx/certs:/etc/nginx/certs:ro

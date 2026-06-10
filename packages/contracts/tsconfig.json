@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Sobrescreve module/moduleResolution da base (ESNext/Bundler) porque este
+    // pacote e compilado por tsc e consumido como CommonJS ("type":"commonjs",
+    // main: dist/index.js). Node16 emite CommonJS por causa do "type":"commonjs"
+    // do package.json (sem isso o dist sairia em ESM e a API CJS quebraria em
+    // runtime com "Unexpected token export") e nao esta deprecado como "node10".
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,26 @@
+// Schema Prisma da Plataforma Defesa Civil MG.
+// Fase 1 (fundacao): apenas datasource e generator.
+// Os models de dominio (usuarios, ocorrencias, municipios, etc.)
+// serao adicionados no passo 2 do roadmap de arquitetura.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/// Model PLACEHOLDER apenas para permitir a geracao do Prisma Client na
+/// Fundacao (sem models o `prisma generate` falha e o PrismaClient nao
+/// inicializa, impedindo o boot da API). Os models reais de dominio
+/// (UF, Municipio, Regional, Compdec, Usuario, Perfil, Competencia,
+/// FormularioVersao, Submissao, RevisaoSubmissao, etc.) entram no passo 2
+/// e SUBSTITUEM este marcador.
+model MarcadorFundacao {
+  id       Int      @id @default(autoincrement())
+  criadoEm DateTime @default(now())
+
+  @@map("_marcador_fundacao")
+}
