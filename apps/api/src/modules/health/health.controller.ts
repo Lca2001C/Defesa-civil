@@ -5,6 +5,7 @@ import {
   HealthCheckResult,
   HealthCheckService,
 } from '@nestjs/terminus';
+import { Publico } from '../../common/decorators/publico.decorator';
 import { PrismaHealthIndicator } from './prisma.health';
 import { RedisHealthIndicator } from './redis.health';
 
@@ -18,6 +19,7 @@ import { RedisHealthIndicator } from './redis.health';
  * O prefixo global "api" e aplicado em main.ts, entao as rotas finais sao
  * /api/health e /api/health/ready.
  */
+@Publico()
 @ApiTags('health')
 @Controller('health')
 export class HealthController {

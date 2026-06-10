@@ -15,7 +15,8 @@
 // Execucao: `pnpm prisma:seed` (ver bloco "prisma" no package.json).
 // =============================================================================
 
-import { PrismaClient } from "@prisma/client";
+import { EscopoUsuario, PrismaClient } from "@prisma/client";
+import * as argon2 from "argon2";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -212,6 +213,47 @@ async function semearPerfis(): Promise<number> {
   return PERFIS.length;
 }
 
+/**
+ * SUPER_ADMIN: cria o usuario administrador inicial do sistema se nao existir.
+ * Credenciais configuradas via variaveis de ambiente (com valores padrao para dev).
+ *
+ * AVISO: em producao, defina SEED_ADMIN_EMAIL, SEED_ADMIN_SENHA e SEED_ADMIN_CPF
+ * no ambiente antes de executar o seed.
+ */
+async function semearSuperAdmin(): Promise<{ criado: boolean; email: string }> {
+  const email = process.env["SEED_ADMIN_EMAIL"] ?? "admin@defesacivil.mg.gov.br";
+  const senha = process.env["SEED_ADMIN_SENHA"] ?? "Defesa@Civil2026!";
+  const cpf   = process.env["SEED_ADMIN_CPF"]   ?? "00000000000";
+  const nome  = process.env["SEED_ADMIN_NOME"]  ?? "Administrador do Sistema";
+
+  const perfilSuperAdmin = await prisma.perfil.findUnique({
+    where: { codigo: "SUPER_ADMIN" },
+  });
+  if (!perfilSuperAdmin) {
+    throw new Error("Perfil SUPER_ADMIN nao encontrado — execute o seed de perfis antes.");
+  }
+
+  const jaExiste = await prisma.usuario.findUnique({ where: { email } });
+  if (jaExiste) return { criado: false, email };
+
+  const senhaHash = await argon2.hash(senha, { type: argon2.argon2id });
+
+  await prisma.usuario.create({
+    data: {
+      nome,
+      cpf,
+      email,
+      senhaHash,
+      cargo: "Administrador do Sistema",
+      perfilId: perfilSuperAdmin.id,
+      escopo: EscopoUsuario.ESTADUAL,
+      ativo: true,
+    },
+  });
+
+  return { criado: true, email };
+}
+
 // ----------------------------------- Main ------------------------------------
 
 async function main(): Promise<void> {
@@ -221,6 +263,7 @@ async function main(): Promise<void> {
   const totalMunicipios = await semearMunicipios();
   const totalPermissoes = await semearPermissoes();
   const totalPerfis = await semearPerfis();
+  const adminResult = await semearSuperAdmin();
 
   // Contagens reais persistidas no banco (confirmacao de idempotencia).
   const ufsNoBanco = await prisma.uf.count();
@@ -228,14 +271,16 @@ async function main(): Promise<void> {
   const permissoesNoBanco = await prisma.permissao.count();
   const perfisNoBanco = await prisma.perfil.count();
 
+  const adminStatus = adminResult.criado
+    ? `criado (${adminResult.email})`
+    : `ja existe — sem alteracoes (${adminResult.email})`;
+
   console.log("Seed concluido com sucesso:");
   console.log(`  UFs processadas:        ${totalUfs} (no banco: ${ufsNoBanco})`);
   console.log(`  Municipios processados: ${totalMunicipios} (no banco: ${municipiosNoBanco})`);
   console.log(`  Permissoes processadas: ${totalPermissoes} (no banco: ${permissoesNoBanco})`);
   console.log(`  Perfis processados:     ${totalPerfis} (no banco: ${perfisNoBanco})`);
-  console.log(
-    "  Usuarios: NAO criados neste seed (dependem de Argon2id — Passo 3).",
-  );
+  console.log(`  SUPER_ADMIN:            ${adminStatus}`);
 }
 
 main()
