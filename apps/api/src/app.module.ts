@@ -1,12 +1,19 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { BullModule } from '@nestjs/bullmq';
 import { validate } from './config/env.validation';
+import type { Env } from './config/env.validation';
 import { PrismaModule } from './infra/prisma/prisma.module';
 import { RedisModule } from './infra/redis/redis.module';
+import { StorageModule } from './infra/storage/storage.module';
 import { HealthModule } from './modules/health/health.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CompetenciasModule } from './modules/competencias/competencias.module';
+import { FormulariosModule } from './modules/formularios/formularios.module';
+import { ExcelModule } from './modules/excel/excel.module';
+import { ImportacaoModule } from './modules/importacao/importacao.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RbacGuard } from './common/guards/rbac.guard';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
@@ -27,11 +34,22 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
       envFilePath: ['../../.env', '.env'],
       validate,
     }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) => ({
+        connection: { url: config.get('REDIS_URL', { infer: true }) },
+      }),
+    }),
     PrismaModule,
     RedisModule,
+    StorageModule,
     HealthModule,
     CommonModule,
     AuthModule,
+    CompetenciasModule,
+    FormulariosModule,
+    ExcelModule,
+    ImportacaoModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

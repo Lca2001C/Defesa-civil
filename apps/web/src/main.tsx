@@ -11,6 +11,7 @@ import { RouterProvider } from "react-router-dom";
 import { tema } from "./theme";
 import { queryClient } from "./lib/queryClient";
 import { router } from "./app/router";
+import { AuthProvider } from "./lib/auth-context";
 
 const elementoRaiz = document.getElementById("root");
 if (!elementoRaiz) {
@@ -22,7 +23,9 @@ createRoot(elementoRaiz).render(
     <ThemeProvider theme={tema}>
       <CssBaseline />
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>
   </React.StrictMode>,

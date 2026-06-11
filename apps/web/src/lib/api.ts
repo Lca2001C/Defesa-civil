@@ -2,6 +2,7 @@
 // A baseUrl e RELATIVA (vinda do runtimeConfig), portanto a SPA sempre usa a
 // mesma origem (Nginx faz o proxy reverso para a API). Nenhuma URL fixa.
 
+import { getAccessToken } from "./auth";
 import { runtimeConfig } from "./runtimeConfig";
 
 /** Erro de requisicao com status HTTP e corpo bruto da resposta. */
@@ -29,13 +30,19 @@ async function requisitar<T>(
   init?: RequestInit,
 ): Promise<T> {
   const temCorpo = body !== undefined;
+  const token = getAccessToken();
+
+  const cabecalhos: Record<string, string> = { Accept: "application/json" };
+  if (temCorpo) cabecalhos["Content-Type"] = "application/json";
+  if (token) cabecalhos["Authorization"] = `Bearer ${token}`;
+  if (init?.headers) {
+    const extra = new Headers(init.headers as HeadersInit);
+    extra.forEach((v, k) => { cabecalhos[k] = v; });
+  }
+
   const resposta = await fetch(montarUrl(path), {
     method,
-    headers: {
-      Accept: "application/json",
-      ...(temCorpo ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers ?? {}),
-    },
+    headers: cabecalhos,
     body: temCorpo ? JSON.stringify(body) : undefined,
     ...init,
   });
@@ -48,6 +55,11 @@ async function requisitar<T>(
     } catch {
       dados = texto;
     }
+  }
+
+  // Token expirado ou invalido: notifica o AuthProvider para limpar sessao.
+  if (resposta.status === 401) {
+    window.dispatchEvent(new CustomEvent("auth:logout"));
   }
 
   if (!resposta.ok) {
