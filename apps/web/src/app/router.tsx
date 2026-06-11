@@ -9,7 +9,7 @@ import RedefinirSenhaPage from "../features/auth/RedefinirSenhaPage";
 import FormulariosPage from "../features/formularios/FormulariosPage";
 import FormularioDetalhe from "../features/formularios/FormularioDetalhe";
 import FormularioNovo from "../features/formularios/FormularioNovo";
-import ImportacaoPage from "../features/importacao/ImportacaoPage";
+import FormularioEditar from "../features/formularios/FormularioEditar";
 import SubmissoesPage from "../features/submissoes/SubmissoesPage";
 import SubmissaoNova from "../features/submissoes/SubmissaoNova";
 import SubmissaoDetalhe from "../features/submissoes/SubmissaoDetalhe";
@@ -43,7 +43,7 @@ export const router = createBrowserRouter([
       { path: "formularios", element: <FormulariosPage /> },
       { path: "formularios/novo", element: <FormularioNovo /> },
       { path: "formularios/:id", element: <FormularioDetalhe /> },
-      { path: "importacao", element: <ImportacaoPage /> },
+      { path: "formularios/:id/versoes/:versaoId/editar", element: <FormularioEditar /> },
       { path: "submissoes", element: <SubmissoesPage /> },
       { path: "submissoes/nova", element: <SubmissaoNova /> },
       { path: "submissoes/:id", element: <SubmissaoDetalhe /> },

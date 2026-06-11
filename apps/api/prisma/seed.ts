@@ -59,7 +59,6 @@ const PERMISSOES: PermissaoCatalogo[] = [
   { chave: "competencias.gerenciar", descricao: "Criar, editar e abrir/encerrar competencias" },
   { chave: "formularios.criar", descricao: "Criar e editar formularios e suas versoes" },
   { chave: "formularios.publicar", descricao: "Publicar versoes de formularios" },
-  { chave: "importacao.executar", descricao: "Executar importacao em massa via planilha" },
   { chave: "submissoes.criar", descricao: "Criar submissoes (respostas) de municipios" },
   { chave: "submissoes.editar", descricao: "Editar submissoes em rascunho ou correcao" },
   { chave: "submissoes.revisar", descricao: "Revisar submissoes e solicitar correcoes" },
@@ -98,6 +97,20 @@ const PERFIS: PerfilCatalogo[] = [
     nivel: 80,
     // Todas as permissoes, exceto gerenciar perfis (RBAC).
     permissoes: TODAS_PERMISSOES.filter((c) => c !== "perfis.gerenciar"),
+  },
+  {
+    codigo: "ANALISTA_ESTADUAL",
+    nome: "Analista Estadual",
+    nivel: 70,
+    // Cria/publica formularios (construtor visual) e revisa submissoes.
+    permissoes: [
+      "painel.ver",
+      "formularios.criar",
+      "formularios.publicar",
+      "submissoes.revisar",
+      "submissoes.validar",
+      "relatorios.exportar",
+    ],
   },
   {
     codigo: "COORDENADOR_REGIONAL",
@@ -275,6 +288,199 @@ async function semearSuperAdmin(): Promise<{ criado: boolean; email: string }> {
   return { criado: true, email };
 }
 
+// --------------------- Blocos reutilizaveis e Templates ----------------------
+
+/** Bloco "Responsavel COMPDEC" reutilizavel pelo construtor. */
+const BLOCO_RESPONSAVEL = {
+  titulo: "Responsável COMPDEC",
+  perguntas: [
+    { codigo: "resp_nome", rotulo: "Nome do Coordenador", tipo: "TEXTO_CURTO", obrigatorio: true },
+    { codigo: "resp_cargo", rotulo: "Cargo/Função", tipo: "LISTA_SUSPENSA", obrigatorio: true,
+      opcoes: [
+        { valor: "coordenador", rotulo: "Coordenador" },
+        { valor: "secretario", rotulo: "Secretário" },
+        { valor: "diretor", rotulo: "Diretor" },
+        { valor: "outro", rotulo: "Outro" },
+      ] },
+    { codigo: "resp_telefone", rotulo: "Telefone", tipo: "TELEFONE", obrigatorio: true },
+    { codigo: "resp_email", rotulo: "E-mail", tipo: "EMAIL", obrigatorio: true },
+    { codigo: "resp_acumula", rotulo: "Possui acúmulo de cargo?", tipo: "SIM_NAO", obrigatorio: true },
+    { codigo: "resp_qual_cargo", rotulo: "Qual cargo acumula?", tipo: "TEXTO_CURTO", obrigatorio: false,
+      regras: [{ origemCodigo: "resp_acumula", operador: "IGUAL", valor: "true", acao: "MOSTRAR" }] },
+  ],
+};
+
+const BLOCO_DADOS_INSTITUCIONAIS = {
+  titulo: "Dados Institucionais",
+  perguntas: [
+    { codigo: "lei_criacao", rotulo: "Lei de criação da COMPDEC", tipo: "TEXTO_CURTO", obrigatorio: false },
+    { codigo: "lei_numero", rotulo: "Número da Lei", tipo: "TEXTO_CURTO", obrigatorio: false },
+    { codigo: "lei_data", rotulo: "Data de criação", tipo: "DATA", obrigatorio: false },
+  ],
+};
+
+const BLOCO_ENDERECO = {
+  titulo: "Endereço",
+  perguntas: [
+    { codigo: "end_logradouro", rotulo: "Logradouro", tipo: "TEXTO_CURTO", obrigatorio: true },
+    { codigo: "end_numero", rotulo: "Número", tipo: "TEXTO_CURTO", obrigatorio: false },
+    { codigo: "end_bairro", rotulo: "Bairro", tipo: "TEXTO_CURTO", obrigatorio: false },
+    { codigo: "end_cep", rotulo: "CEP", tipo: "CEP", obrigatorio: false },
+  ],
+};
+
+const BLOCO_EFETIVO = {
+  titulo: "Efetivo",
+  perguntas: [
+    { codigo: "efetivo_servidores", rotulo: "Total de servidores", tipo: "NUMERO", obrigatorio: false },
+    { codigo: "efetivo_voluntarios", rotulo: "Total de voluntários", tipo: "NUMERO", obrigatorio: false },
+    { codigo: "efetivo_capacitados", rotulo: "% de capacitados", tipo: "PORCENTAGEM", obrigatorio: false },
+  ],
+};
+
+const BLOCO_EQUIPAMENTOS = {
+  titulo: "Equipamentos",
+  perguntas: [
+    { codigo: "equip_viaturas", rotulo: "Quantidade de viaturas", tipo: "NUMERO", obrigatorio: false },
+    { codigo: "equip_disponiveis", rotulo: "Equipamentos disponíveis", tipo: "CHECKBOX", obrigatorio: false,
+      opcoes: [
+        { valor: "radio", rotulo: "Rádio comunicador" },
+        { valor: "gerador", rotulo: "Gerador" },
+        { valor: "bomba", rotulo: "Bomba d'água" },
+        { valor: "barco", rotulo: "Barco/Bote" },
+      ] },
+  ],
+};
+
+const BLOCOS = [
+  { nome: "Responsável COMPDEC", categoria: "COMPDEC", descricao: "Dados do coordenador da COMPDEC.", conteudo: BLOCO_RESPONSAVEL },
+  { nome: "Dados Institucionais", categoria: "COMPDEC", descricao: "Lei de criação e dados legais.", conteudo: BLOCO_DADOS_INSTITUCIONAIS },
+  { nome: "Endereço", categoria: "Geral", descricao: "Endereço da sede.", conteudo: BLOCO_ENDERECO },
+  { nome: "Efetivo", categoria: "Recursos", descricao: "Pessoal da COMPDEC.", conteudo: BLOCO_EFETIVO },
+  { nome: "Equipamentos", categoria: "Recursos", descricao: "Equipamentos disponíveis.", conteudo: BLOCO_EQUIPAMENTOS },
+];
+
+/** Seção de identificação do município (campos AUTOMATICO). */
+const SECAO_IDENTIFICACAO = {
+  titulo: "Identificação do Município",
+  perguntas: [
+    { codigo: "codigo_ibge", rotulo: "Código IBGE", tipo: "AUTOMATICO", obrigatorio: true, fonteAutomatica: "CODIGO_IBGE" },
+    { codigo: "municipio_nome", rotulo: "Município", tipo: "AUTOMATICO", obrigatorio: true, fonteAutomatica: "MUNICIPIO_ATUAL" },
+    { codigo: "competencia", rotulo: "Competência", tipo: "AUTOMATICO", obrigatorio: true, fonteAutomatica: "COMPETENCIA_ATUAL" },
+  ],
+};
+
+const TEMPLATES = [
+  {
+    nome: "Diagnóstico COMPDEC",
+    categoria: "Diagnóstico",
+    descricao: "Levantamento completo da estrutura da COMPDEC municipal.",
+    schema: {
+      versao: 1,
+      titulo: "Diagnóstico COMPDEC",
+      descricao: "Levantamento completo da estrutura da COMPDEC municipal.",
+      secoes: [
+        SECAO_IDENTIFICACAO,
+        BLOCO_RESPONSAVEL,
+        BLOCO_DADOS_INSTITUCIONAIS,
+        BLOCO_EFETIVO,
+        BLOCO_EQUIPAMENTOS,
+      ],
+    },
+  },
+  {
+    nome: "Responsável COMPDEC",
+    categoria: "COMPDEC",
+    descricao: "Cadastro do responsável pela COMPDEC.",
+    schema: { versao: 1, titulo: "Responsável COMPDEC", secoes: [SECAO_IDENTIFICACAO, BLOCO_RESPONSAVEL] },
+  },
+  {
+    nome: "Infraestrutura",
+    categoria: "Estrutura",
+    descricao: "Infraestrutura física e endereço da COMPDEC.",
+    schema: { versao: 1, titulo: "Infraestrutura", secoes: [SECAO_IDENTIFICACAO, BLOCO_ENDERECO, BLOCO_EQUIPAMENTOS] },
+  },
+  {
+    nome: "Efetivo",
+    categoria: "Recursos",
+    descricao: "Pessoal disponível na COMPDEC.",
+    schema: { versao: 1, titulo: "Efetivo", secoes: [SECAO_IDENTIFICACAO, BLOCO_EFETIVO] },
+  },
+  {
+    nome: "Gestão de Risco",
+    categoria: "Gestão",
+    descricao: "Mapeamento e ações de gestão de risco.",
+    schema: {
+      versao: 1,
+      titulo: "Gestão de Risco",
+      secoes: [
+        SECAO_IDENTIFICACAO,
+        {
+          titulo: "Gestão de Risco",
+          perguntas: [
+            { codigo: "possui_mapeamento", rotulo: "Possui mapeamento de áreas de risco?", tipo: "SIM_NAO", obrigatorio: true },
+            { codigo: "qtd_areas_risco", rotulo: "Quantidade de áreas de risco", tipo: "NUMERO", obrigatorio: false,
+              regras: [{ origemCodigo: "possui_mapeamento", operador: "IGUAL", valor: "true", acao: "MOSTRAR" }] },
+            { codigo: "plano_contingencia", rotulo: "Possui plano de contingência?", tipo: "SIM_NAO", obrigatorio: true },
+            { codigo: "anexo_mapa", rotulo: "Anexar mapa de risco", tipo: "UPLOAD", obrigatorio: false },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    nome: "Gestão do Desastre",
+    categoria: "Gestão",
+    descricao: "Registro de ocorrências e resposta a desastres.",
+    schema: {
+      versao: 1,
+      titulo: "Gestão do Desastre",
+      secoes: [
+        SECAO_IDENTIFICACAO,
+        {
+          titulo: "Gestão do Desastre",
+          perguntas: [
+            { codigo: "tipo_desastre", rotulo: "Tipo de desastre predominante", tipo: "LISTA_SUSPENSA", obrigatorio: true,
+              opcoes: [
+                { valor: "inundacao", rotulo: "Inundação" },
+                { valor: "deslizamento", rotulo: "Deslizamento" },
+                { valor: "seca", rotulo: "Seca/Estiagem" },
+                { valor: "vendaval", rotulo: "Vendaval" },
+              ] },
+            { codigo: "qtd_ocorrencias_ano", rotulo: "Ocorrências no último ano", tipo: "NUMERO", obrigatorio: false },
+            { codigo: "valor_prejuizo", rotulo: "Prejuízo estimado", tipo: "MOEDA", obrigatorio: false },
+            { codigo: "data_ultima", rotulo: "Data da última ocorrência", tipo: "DATA", obrigatorio: false },
+          ],
+        },
+      ],
+    },
+  },
+];
+
+/** Blocos reutilizaveis: cria por nome (idempotente). */
+async function semearBlocos(): Promise<number> {
+  let criados = 0;
+  for (const bloco of BLOCOS) {
+    const existe = await prisma.blocoReutilizavel.findFirst({ where: { nome: bloco.nome } });
+    if (existe) continue;
+    await prisma.blocoReutilizavel.create({ data: bloco });
+    criados++;
+  }
+  return criados;
+}
+
+/** Templates de formulario: cria por nome (idempotente). */
+async function semearTemplates(): Promise<number> {
+  let criados = 0;
+  for (const template of TEMPLATES) {
+    const existe = await prisma.formularioTemplate.findFirst({ where: { nome: template.nome } });
+    if (existe) continue;
+    await prisma.formularioTemplate.create({ data: template });
+    criados++;
+  }
+  return criados;
+}
+
 // ----------------------------- Termo LGPD v1.0 -------------------------------
 
 async function semearTermoLgpd(): Promise<boolean> {
@@ -341,6 +547,8 @@ async function main(): Promise<void> {
   const totalPerfis = await semearPerfis();
   const adminResult = await semearSuperAdmin();
   const termoCriado = await semearTermoLgpd();
+  const totalBlocos = await semearBlocos();
+  const totalTemplates = await semearTemplates();
 
   // Contagens reais persistidas no banco (confirmacao de idempotencia).
   const ufsNoBanco = await prisma.uf.count();
@@ -360,6 +568,8 @@ async function main(): Promise<void> {
   console.log(`  Perfis processados:     ${totalPerfis} (no banco: ${perfisNoBanco})`);
   console.log(`  SUPER_ADMIN:            ${adminStatus}`);
   console.log(`  Termo LGPD v1.0:        ${termoCriado ? "criado" : "ja existe"}`);
+  console.log(`  Blocos reutilizaveis:   ${totalBlocos} criados (idempotente)`);
+  console.log(`  Templates de formulario:${totalTemplates} criados (idempotente)`);
 }
 
 main()

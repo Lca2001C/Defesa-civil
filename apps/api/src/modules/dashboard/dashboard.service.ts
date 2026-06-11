@@ -46,23 +46,21 @@ export class DashboardService {
     ) as Record<string, number>;
 
     const respondidas =
-      (c[SubmissaoStatus.ENVIADA] ?? 0) +
-      (c[SubmissaoStatus.EM_ANALISE] ?? 0) +
+      (c[SubmissaoStatus.ENVIADO] ?? 0) +
       (c[SubmissaoStatus.CORRECAO_SOLICITADA] ?? 0) +
-      (c[SubmissaoStatus.REVISADA] ?? 0) +
-      (c[SubmissaoStatus.VALIDADA] ?? 0);
+      (c[SubmissaoStatus.REVISADO] ?? 0) +
+      (c[SubmissaoStatus.APROVADO] ?? 0);
 
     const total = Object.values(c).reduce((a, b) => a + b, 0);
 
     return {
       total,
       rascunho: c[SubmissaoStatus.RASCUNHO] ?? 0,
-      enviada: c[SubmissaoStatus.ENVIADA] ?? 0,
-      emAnalise: c[SubmissaoStatus.EM_ANALISE] ?? 0,
+      emPreenchimento: c[SubmissaoStatus.EM_PREENCHIMENTO] ?? 0,
+      enviada: c[SubmissaoStatus.ENVIADO] ?? 0,
       correcaoSolicitada: c[SubmissaoStatus.CORRECAO_SOLICITADA] ?? 0,
-      revisada: c[SubmissaoStatus.REVISADA] ?? 0,
-      validada: c[SubmissaoStatus.VALIDADA] ?? 0,
-      rejeitada: c[SubmissaoStatus.REJEITADA] ?? 0,
+      revisada: c[SubmissaoStatus.REVISADO] ?? 0,
+      aprovada: c[SubmissaoStatus.APROVADO] ?? 0,
       respondidas,
       percentualCobertura:
         totalMunicipios > 0
@@ -82,19 +80,19 @@ export class DashboardService {
       where: {
         competenciaId,
         criadoEm: { gte: desde },
-        status: { not: SubmissaoStatus.RASCUNHO },
+        status: { notIn: [SubmissaoStatus.RASCUNHO, SubmissaoStatus.EM_PREENCHIMENTO] },
         ...escopo,
       },
       select: { criadoEm: true, status: true },
       orderBy: { criadoEm: 'asc' },
     });
 
-    const mapa = new Map<string, { enviadas: number; validadas: number }>();
+    const mapa = new Map<string, { enviadas: number; aprovadas: number }>();
     for (const s of submissoes) {
       const data = s.criadoEm.toISOString().slice(0, 10);
-      const atual = mapa.get(data) ?? { enviadas: 0, validadas: 0 };
+      const atual = mapa.get(data) ?? { enviadas: 0, aprovadas: 0 };
       atual.enviadas++;
-      if (s.status === SubmissaoStatus.VALIDADA) atual.validadas++;
+      if (s.status === SubmissaoStatus.APROVADO) atual.aprovadas++;
       mapa.set(data, atual);
     }
 
@@ -111,7 +109,7 @@ export class DashboardService {
     const submissoes = await this.prisma.submissao.findMany({
       where: {
         competenciaId,
-        status: { not: SubmissaoStatus.RASCUNHO },
+        status: { notIn: [SubmissaoStatus.RASCUNHO, SubmissaoStatus.EM_PREENCHIMENTO] },
         ...escopo,
       },
       select: {
@@ -124,14 +122,14 @@ export class DashboardService {
 
     const mapa = new Map<
       string,
-      { nome: string; total: number; validadas: number }
+      { nome: string; total: number; aprovadas: number }
     >();
     for (const s of submissoes) {
       const id = s.municipio.regional?.id ?? '__sem_regional__';
       const nome = s.municipio.regional?.nome ?? 'Sem regional';
-      const atual = mapa.get(id) ?? { nome, total: 0, validadas: 0 };
+      const atual = mapa.get(id) ?? { nome, total: 0, aprovadas: 0 };
       atual.total++;
-      if (s.status === SubmissaoStatus.VALIDADA) atual.validadas++;
+      if (s.status === SubmissaoStatus.APROVADO) atual.aprovadas++;
       mapa.set(id, atual);
     }
 
@@ -148,7 +146,7 @@ export class DashboardService {
     const submissoes = await this.prisma.submissao.findMany({
       where: {
         competenciaId,
-        status: { not: SubmissaoStatus.RASCUNHO },
+        status: { notIn: [SubmissaoStatus.RASCUNHO, SubmissaoStatus.EM_PREENCHIMENTO] },
         ...escopo,
       },
       select: {
@@ -165,7 +163,7 @@ export class DashboardService {
 
     const mapa = new Map<
       string,
-      { formularioId: string; nome: string; versao: number; total: number; validadas: number }
+      { formularioId: string; nome: string; versao: number; total: number; aprovadas: number }
     >();
     for (const s of submissoes) {
       const fv = s.formularioVersao;
@@ -174,10 +172,10 @@ export class DashboardService {
         nome: fv.formulario.nome,
         versao: fv.versao,
         total: 0,
-        validadas: 0,
+        aprovadas: 0,
       };
       atual.total++;
-      if (s.status === SubmissaoStatus.VALIDADA) atual.validadas++;
+      if (s.status === SubmissaoStatus.APROVADO) atual.aprovadas++;
       mapa.set(fv.id, atual);
     }
 

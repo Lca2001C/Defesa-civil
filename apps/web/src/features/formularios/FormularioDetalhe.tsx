@@ -5,25 +5,26 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Divider,
   Typography,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
-import { DynamicForm } from "../../components/dynamic-form";
+import { useAuth } from "../../lib/auth-context";
+import { PreviewDialog } from "./builder/PreviewDialog";
+import { useState } from "react";
 import type { SchemaFormulario } from "@dcmg/contracts";
 
-interface Versao {
+interface VersaoResumo {
   id: string;
   versao: number;
   status: string;
   publicadoEm: string | null;
-  competencia: { nome: string; status: string } | null;
-  schema: SchemaFormulario;
+  competencia: { id: string; nome: string; status: string } | null;
+  _count: { submissoes: number };
 }
 
 interface FormularioDetalheData {
@@ -32,7 +33,7 @@ interface FormularioDetalheData {
   descricao: string | null;
   categoria: string | null;
   status: string;
-  versoes: Versao[];
+  versoes: VersaoResumo[];
 }
 
 const COR_STATUS: Record<string, "default" | "warning" | "success" | "error"> = {
@@ -44,13 +45,20 @@ const COR_STATUS: Record<string, "default" | "warning" | "success" | "error"> = 
 export default function FormularioDetalhe() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [versaoPreview, setVersaoPreview] = useState<Versao | null>(null);
+  const { usuario } = useAuth();
+  const podeEditar = usuario?.permissoes.includes("formularios.criar") ?? false;
+  const [previewSchema, setPreviewSchema] = useState<SchemaFormulario | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["formularios", id],
     queryFn: () => api.get<FormularioDetalheData>(`/formularios/${id}`),
     enabled: !!id,
   });
+
+  async function abrirPreview(versaoId: string) {
+    const v = await api.get<{ schema: SchemaFormulario }>(`/formularios/${id}/versoes/${versaoId}`);
+    setPreviewSchema(v.schema);
+  }
 
   if (isLoading) {
     return (
@@ -59,16 +67,11 @@ export default function FormularioDetalhe() {
       </Box>
     );
   }
-
   if (!data) return null;
 
   return (
     <Box>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        sx={{ mb: 2 }}
-        onClick={() => navigate("/formularios")}
-      >
+      <Button startIcon={<ArrowBackIcon />} sx={{ mb: 2 }} onClick={() => navigate("/formularios")}>
         Voltar
       </Button>
 
@@ -93,50 +96,47 @@ export default function FormularioDetalhe() {
         Versões ({data.versoes.length})
       </Typography>
 
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, mb: 4 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
         {data.versoes.map((v) => (
           <Card key={v.id}>
-            <CardContent
-              sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-            >
+            <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Box>
                 <Typography variant="subtitle2">Versão {v.versao}</Typography>
                 {v.competencia && (
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                     Competência: {v.competencia.nome} ({v.competencia.status})
                   </Typography>
                 )}
-                {v.publicadoEm && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                    Publicado em: {new Date(v.publicadoEm).toLocaleDateString("pt-BR")}
-                  </Typography>
-                )}
+                <Typography variant="caption" color="text.secondary">
+                  {v._count.submissoes} submissão{v._count.submissoes !== 1 ? "ões" : ""}
+                  {v.publicadoEm
+                    ? ` · publicado em ${new Date(v.publicadoEm).toLocaleDateString("pt-BR")}`
+                    : ""}
+                </Typography>
               </Box>
               <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
                 <Chip label={v.status} color={COR_STATUS[v.status] ?? "default"} size="small" />
-                <Button
-                  size="small"
-                  startIcon={<VisibilityIcon />}
-                  onClick={() => setVersaoPreview(versaoPreview?.id === v.id ? null : v)}
-                >
-                  {versaoPreview?.id === v.id ? "Fechar" : "Preview"}
+                <Button size="small" startIcon={<VisibilityIcon />} onClick={() => abrirPreview(v.id)}>
+                  Preview
                 </Button>
+                {podeEditar && (
+                  <Button
+                    size="small"
+                    startIcon={<EditIcon />}
+                    onClick={() => navigate(`/formularios/${id}/versoes/${v.id}/editar`)}
+                  >
+                    Editar
+                  </Button>
+                )}
               </Box>
             </CardContent>
-
-            {versaoPreview?.id === v.id && (
-              <Box sx={{ px: 3, pb: 3 }}>
-                <Divider sx={{ mb: 3 }} />
-                <DynamicForm
-                  schema={v.schema}
-                  onSubmit={() => {}}
-                  preview
-                />
-              </Box>
-            )}
           </Card>
         ))}
       </Box>
+
+      {previewSchema && (
+        <PreviewDialog aberto schema={previewSchema} onFechar={() => setPreviewSchema(null)} />
+      )}
     </Box>
   );
 }

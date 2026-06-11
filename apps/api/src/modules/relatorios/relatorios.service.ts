@@ -12,12 +12,11 @@ interface FiltrosExportacao {
 
 const LABEL_STATUS: Record<string, string> = {
   RASCUNHO: 'Rascunho',
-  ENVIADA: 'Enviada',
-  EM_ANALISE: 'Em análise',
+  EM_PREENCHIMENTO: 'Em preenchimento',
+  ENVIADO: 'Enviado',
   CORRECAO_SOLICITADA: 'Correção solicitada',
-  REVISADA: 'Revisada',
-  VALIDADA: 'Validada',
-  REJEITADA: 'Rejeitada',
+  REVISADO: 'Revisado',
+  APROVADO: 'Aprovado',
 };
 
 function mascaraCpf(cpf: string): string {
@@ -52,7 +51,7 @@ export class RelatoriosService {
         emailRespondente: true,
         telefoneRespondente: true,
         enviadoEm: true,
-        validadoEm: true,
+        aprovadoEm: true,
         criadoEm: true,
         municipio: {
           select: {
@@ -109,7 +108,7 @@ export class RelatoriosService {
       { header: 'Cargo', key: 'cargo', width: 22 },
       { header: 'E-mail', key: 'email', width: 28 },
       { header: 'Enviado em', key: 'enviadoEm', width: 20 },
-      { header: 'Validado em', key: 'validadoEm', width: 20 },
+      { header: 'Aprovado em', key: 'aprovadoEm', width: 20 },
     ];
 
     sheet.columns = cabecalhos;
@@ -135,12 +134,11 @@ export class RelatoriosService {
 
     // dados
     const STATUS_CORES: Record<string, string> = {
-      VALIDADA: 'FF22C55E',
-      REJEITADA: 'FFEF4444',
+      APROVADO: 'FF22C55E',
       CORRECAO_SOLICITADA: 'FFEAB308',
-      ENVIADA: 'FF60A5FA',
-      EM_ANALISE: 'FFA78BFA',
-      REVISADA: 'FF34D399',
+      ENVIADO: 'FF60A5FA',
+      REVISADO: 'FF34D399',
+      EM_PREENCHIMENTO: 'FFA78BFA',
       RASCUNHO: 'FF94A3B8',
     };
 
@@ -158,7 +156,7 @@ export class RelatoriosService {
         s.cargoRespondente ?? '—',
         s.emailRespondente ?? '—',
         s.enviadoEm ? s.enviadoEm.toLocaleString('pt-BR') : '—',
-        s.validadoEm ? s.validadoEm.toLocaleString('pt-BR') : '—',
+        s.aprovadoEm ? s.aprovadoEm.toLocaleString('pt-BR') : '—',
       ]);
 
       linha.height = 18;
@@ -187,11 +185,11 @@ export class RelatoriosService {
     abaResumo.getCell('B1').value = competencia.nome;
     abaResumo.getCell('A2').value = 'Total exportado';
     abaResumo.getCell('B2').value = submissoes.length;
-    abaResumo.getCell('A3').value = 'Validadas';
-    abaResumo.getCell('B3').value = submissoes.filter((s) => s.status === 'VALIDADA').length;
+    abaResumo.getCell('A3').value = 'Aprovadas';
+    abaResumo.getCell('B3').value = submissoes.filter((s) => s.status === 'APROVADO').length;
     abaResumo.getCell('A4').value = 'Pendentes';
     abaResumo.getCell('B4').value = submissoes.filter(
-      (s) => !['VALIDADA', 'REJEITADA', 'RASCUNHO'].includes(s.status),
+      (s) => !['APROVADO', 'RASCUNHO', 'EM_PREENCHIMENTO'].includes(s.status),
     ).length;
     abaResumo.getCell('A5').value = 'Data de exportação';
     abaResumo.getCell('B5').value = new Date().toLocaleString('pt-BR');

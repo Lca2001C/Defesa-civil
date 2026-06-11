@@ -11,27 +11,37 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
   TextField,
   Typography,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SendIcon from "@mui/icons-material/Send";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CancelIcon from "@mui/icons-material/Cancel";
 import EditIcon from "@mui/icons-material/Edit";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import type { SchemaFormulario } from "@dcmg/contracts";
 
-interface Revisao {
+interface HistoricoItem {
   id: string;
   acao: string;
   comentario: string | null;
   criadoEm: string;
-  revisor: { nome: string };
+  autor: { nome: string };
+}
+
+interface Anexo {
+  id: string;
+  arquivo: { nomeOriginal: string; mimeType: string | null; tamanhoBytes: number | null };
 }
 
 interface SubmissaoCompleta {
@@ -44,30 +54,41 @@ interface SubmissaoCompleta {
   emailRespondente: string | null;
   criadoEm: string;
   enviadoEm: string | null;
-  validadoEm: string | null;
+  aprovadoEm: string | null;
   dados: Record<string, unknown>;
+  schema: SchemaFormulario;
   municipio: { nome: string; uf: { sigla: string } };
-  formularioVersao: { versao: number; schema: SchemaFormulario; formulario: { nome: string } };
+  formularioVersao: { versao: number; formulario: { nome: string } };
   competencia: { nome: string; status: string };
   autor: { nome: string; email: string };
-  revisoes: Revisao[];
+  historico: HistoricoItem[];
+  anexos: Anexo[];
 }
 
 const COR_STATUS: Record<string, "default" | "info" | "warning" | "success" | "error"> = {
   RASCUNHO: "default",
-  ENVIADA: "info",
-  EM_ANALISE: "warning",
+  EM_PREENCHIMENTO: "info",
+  ENVIADO: "info",
   CORRECAO_SOLICITADA: "error",
-  REVISADA: "warning",
-  VALIDADA: "success",
-  REJEITADA: "error",
+  REVISADO: "warning",
+  APROVADO: "success",
+};
+
+const LABEL_STATUS: Record<string, string> = {
+  RASCUNHO: "Rascunho",
+  EM_PREENCHIMENTO: "Em preenchimento",
+  ENVIADO: "Enviado",
+  CORRECAO_SOLICITADA: "Correção solicitada",
+  REVISADO: "Revisado",
+  APROVADO: "Aprovado",
 };
 
 const ICONE_ACAO: Record<string, string> = {
+  ENVIOU: "📨",
   SOLICITOU_CORRECAO: "⚠️",
   REVISOU: "✏️",
-  VALIDOU: "✅",
-  REJEITOU: "❌",
+  APROVOU: "✅",
+  EDITOU: "📝",
 };
 
 export default function SubmissaoDetalhe() {
@@ -75,6 +96,7 @@ export default function SubmissaoDetalhe() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { usuario } = useAuth();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [dialogAcao, setDialogAcao] = useState<string | null>(null);
   const [comentario, setComentario] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -88,13 +110,18 @@ export default function SubmissaoDetalhe() {
   const podeRevisar = usuario?.permissoes.includes("submissoes.revisar") ?? false;
   const podeValidar = usuario?.permissoes.includes("submissoes.validar") ?? false;
   const podeCriar = usuario?.permissoes.includes("submissoes.criar") ?? false;
+  const podeEditar = usuario?.permissoes.includes("submissoes.editar") ?? false;
+
+  const invalida = () => {
+    qc.invalidateQueries({ queryKey: ["submissao", id] });
+    qc.invalidateQueries({ queryKey: ["submissoes"] });
+  };
 
   const acaoMutation = useMutation({
     mutationFn: (acao: string) =>
       api.patch(`/submissoes/${id}/${acao}`, { comentario: comentario || undefined }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["submissao", id] });
-      qc.invalidateQueries({ queryKey: ["submissoes"] });
+      invalida();
       setDialogAcao(null);
       setComentario("");
       setErro(null);
@@ -104,10 +131,23 @@ export default function SubmissaoDetalhe() {
 
   const enviarMutation = useMutation({
     mutationFn: () => api.patch(`/submissoes/${id}/enviar`, {}),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["submissao", id] });
-      qc.invalidateQueries({ queryKey: ["submissoes"] });
+    onSuccess: invalida,
+    onError: (e: unknown) => setErro((e as Error).message),
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append("arquivo", file);
+      return api.post(`/submissoes/${id}/anexos`, fd);
     },
+    onSuccess: () => { invalida(); setErro(null); },
+    onError: (e: unknown) => setErro((e as Error).message),
+  });
+
+  const removerAnexo = useMutation({
+    mutationFn: (anexoId: string) => api.del(`/submissoes/${id}/anexos/${anexoId}`),
+    onSuccess: invalida,
     onError: (e: unknown) => setErro((e as Error).message),
   });
 
@@ -118,45 +158,38 @@ export default function SubmissaoDetalhe() {
       </Box>
     );
   }
-
   if (!data) return null;
 
+  const rotuloPorCodigo = new Map<string, string>();
+  for (const s of data.schema?.secoes ?? []) {
+    for (const p of s.perguntas) rotuloPorCodigo.set(p.codigo, p.rotulo);
+  }
+
   const botoes = [
-    data.status === "RASCUNHO" && podeCriar && {
+    (data.status === "RASCUNHO" || data.status === "EM_PREENCHIMENTO") && podeCriar && {
       label: "Enviar resposta",
       icon: <SendIcon />,
       color: "contained" as const,
       acao: () => enviarMutation.mutate(),
     },
-    (data.status === "ENVIADA" || data.status === "EM_ANALISE" || data.status === "REVISADA") &&
-      podeRevisar && {
-        label: "Solicitar correção",
-        icon: <EditIcon />,
-        color: "outlined" as const,
-        acao: () => setDialogAcao("solicitar-correcao"),
-      },
-    data.status === "CORRECAO_SOLICITADA" &&
-      podeCriar && {
-        label: "Reenviar",
-        icon: <SendIcon />,
-        color: "outlined" as const,
-        acao: () => setDialogAcao("revisar"),
-      },
-    (data.status === "ENVIADA" || data.status === "REVISADA") &&
-      podeValidar && {
-        label: "Validar",
-        icon: <CheckCircleIcon />,
-        color: "contained" as const,
-        acao: () => setDialogAcao("validar"),
-      },
-    data.status !== "VALIDADA" &&
-      data.status !== "RASCUNHO" &&
-      podeValidar && {
-        label: "Rejeitar",
-        icon: <CancelIcon />,
-        color: "outlined" as const,
-        acao: () => setDialogAcao("rejeitar"),
-      },
+    (data.status === "ENVIADO" || data.status === "REVISADO") && podeRevisar && {
+      label: "Solicitar correção",
+      icon: <EditIcon />,
+      color: "outlined" as const,
+      acao: () => setDialogAcao("solicitar-correcao"),
+    },
+    data.status === "CORRECAO_SOLICITADA" && podeCriar && {
+      label: "Reenviar",
+      icon: <SendIcon />,
+      color: "outlined" as const,
+      acao: () => setDialogAcao("revisar"),
+    },
+    (data.status === "ENVIADO" || data.status === "REVISADO") && podeValidar && {
+      label: "Aprovar",
+      icon: <CheckCircleIcon />,
+      color: "contained" as const,
+      acao: () => setDialogAcao("aprovar"),
+    },
   ].filter(Boolean) as {
     label: string;
     icon: React.ReactNode;
@@ -176,7 +209,6 @@ export default function SubmissaoDetalhe() {
         </Alert>
       )}
 
-      {/* Cabeçalho */}
       <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3, flexWrap: "wrap", gap: 1 }}>
         <Box>
           <Typography variant="h5">
@@ -186,19 +218,16 @@ export default function SubmissaoDetalhe() {
             </Typography>
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {data.municipio.nome} – {data.municipio.uf.sigla} · Competência:{" "}
-            {data.competencia.nome}
+            {data.municipio.nome} – {data.municipio.uf.sigla} · Competência: {data.competencia.nome}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Protocolo: <strong>{data.protocolo}</strong>
-            {data.enviadoEm &&
-              ` · Enviado em ${new Date(data.enviadoEm).toLocaleDateString("pt-BR")}`}
+            {data.enviadoEm && ` · Enviado em ${new Date(data.enviadoEm).toLocaleDateString("pt-BR")}`}
           </Typography>
         </Box>
-        <Chip label={data.status} color={COR_STATUS[data.status] ?? "default"} />
+        <Chip label={LABEL_STATUS[data.status] ?? data.status} color={COR_STATUS[data.status] ?? "default"} />
       </Box>
 
-      {/* Ações */}
       {botoes.length > 0 && (
         <Box sx={{ display: "flex", gap: 1, mb: 3, flexWrap: "wrap" }}>
           {botoes.map((b) => (
@@ -210,7 +239,6 @@ export default function SubmissaoDetalhe() {
       )}
 
       <Box sx={{ display: "grid", gridTemplateColumns: { md: "1fr 1fr" }, gap: 3 }}>
-        {/* Dados do respondente */}
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>
@@ -235,7 +263,6 @@ export default function SubmissaoDetalhe() {
           </CardContent>
         </Card>
 
-        {/* Dados preenchidos */}
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>
@@ -244,11 +271,11 @@ export default function SubmissaoDetalhe() {
             <Divider sx={{ mb: 1.5 }} />
             {Object.entries(data.dados).map(([k, v]) => (
               <Box key={k} sx={{ display: "flex", gap: 1, mb: 0.5 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 120 }}>
-                  {k}
+                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 140 }}>
+                  {rotuloPorCodigo.get(k) ?? k}
                 </Typography>
                 <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
-                  {String(v ?? "—")}
+                  {Array.isArray(v) ? v.join(", ") : String(v ?? "—")}
                 </Typography>
               </Box>
             ))}
@@ -256,31 +283,82 @@ export default function SubmissaoDetalhe() {
         </Card>
       </Box>
 
-      {/* Histórico de revisões */}
-      {data.revisoes.length > 0 && (
+      {/* Anexos */}
+      <Card sx={{ mt: 3 }}>
+        <CardContent>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Typography variant="h6">Anexos</Typography>
+            {podeEditar && (
+              <Button
+                size="small"
+                startIcon={<UploadFileIcon />}
+                onClick={() => inputRef.current?.click()}
+                disabled={uploadMutation.isPending}
+              >
+                {uploadMutation.isPending ? "Enviando…" : "Anexar arquivo"}
+              </Button>
+            )}
+            <input
+              ref={inputRef}
+              type="file"
+              hidden
+              accept=".pdf,.docx,.doc,.xlsx,.xls,.zip,.png,.jpg,.jpeg"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadMutation.mutate(f);
+                e.target.value = "";
+              }}
+            />
+          </Box>
+          <Typography variant="caption" color="text.secondary">
+            Tipos aceitos: PDF, DOCX, XLSX, ZIP, PNG, JPG.
+          </Typography>
+          <List dense>
+            {data.anexos.map((a) => (
+              <ListItem
+                key={a.id}
+                secondaryAction={
+                  podeEditar && (
+                    <IconButton edge="end" size="small" color="error" onClick={() => removerAnexo.mutate(a.id)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  )
+                }
+              >
+                <ListItemText
+                  primary={a.arquivo.nomeOriginal}
+                  secondary={a.arquivo.tamanhoBytes ? `${Math.round(a.arquivo.tamanhoBytes / 1024)} KB` : undefined}
+                />
+              </ListItem>
+            ))}
+            {data.anexos.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ pl: 2 }}>
+                Nenhum anexo.
+              </Typography>
+            )}
+          </List>
+        </CardContent>
+      </Card>
+
+      {/* Histórico */}
+      {data.historico.length > 0 && (
         <Card sx={{ mt: 3 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>
-              Histórico de revisões
+              Histórico
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              {data.revisoes.map((r) => (
+              {data.historico.map((r) => (
                 <Box
                   key={r.id}
-                  sx={{
-                    display: "flex",
-                    gap: 1.5,
-                    pl: 1,
-                    borderLeft: "3px solid",
-                    borderColor: "primary.main",
-                  }}
+                  sx={{ display: "flex", gap: 1.5, pl: 1, borderLeft: "3px solid", borderColor: "primary.main" }}
                 >
                   <Box>
                     <Typography variant="subtitle2">
                       {ICONE_ACAO[r.acao] ?? "•"} {r.acao.replace(/_/g, " ")}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {r.revisor.nome} · {new Date(r.criadoEm).toLocaleString("pt-BR")}
+                      {r.autor.nome} · {new Date(r.criadoEm).toLocaleString("pt-BR")}
                     </Typography>
                     {r.comentario && (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -295,13 +373,11 @@ export default function SubmissaoDetalhe() {
         </Card>
       )}
 
-      {/* Dialog de confirmação de ação */}
       <Dialog open={!!dialogAcao} onClose={() => setDialogAcao(null)} maxWidth="sm" fullWidth>
         <DialogTitle>
           {dialogAcao === "solicitar-correcao" && "Solicitar correção"}
           {dialogAcao === "revisar" && "Reenviar resposta corrigida"}
-          {dialogAcao === "validar" && "Validar submissão"}
-          {dialogAcao === "rejeitar" && "Rejeitar submissão"}
+          {dialogAcao === "aprovar" && "Aprovar submissão"}
         </DialogTitle>
         <DialogContent>
           <TextField

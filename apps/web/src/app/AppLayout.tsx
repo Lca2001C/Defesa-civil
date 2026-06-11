@@ -17,7 +17,6 @@ import {
 import MapIcon from "@mui/icons-material/Map";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import DescriptionIcon from "@mui/icons-material/Description";
-import UploadFileIcon from "@mui/icons-material/UploadFile";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import LocationCityIcon from "@mui/icons-material/LocationCity";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
@@ -40,7 +39,6 @@ const itensMenu: ItemMenu[] = [
   { rotulo: "Dashboard", icone: <BarChartIcon />, path: "/dashboard" },
   { rotulo: "Formulários", icone: <DescriptionIcon />, path: "/formularios" },
   { rotulo: "Submissões", icone: <AssignmentIcon />, path: "/submissoes" },
-  { rotulo: "Importação", icone: <UploadFileIcon />, path: "/importacao" },
   { rotulo: "Municípios", icone: <LocationCityIcon />, path: "/municipios" },
   { rotulo: "Admin", icone: <AdminPanelSettingsIcon />, path: "/admin" },
 ];

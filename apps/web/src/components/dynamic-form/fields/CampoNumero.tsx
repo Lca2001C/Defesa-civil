@@ -1,12 +1,14 @@
 import { InputAdornment, TextField } from "@mui/material";
-import { TipoCampo } from "@dcmg/contracts";
+import { TipoPergunta } from "@dcmg/contracts";
 import type { FieldProps } from "../types";
 
 export function CampoNumero({ campo, field, error }: FieldProps) {
-  const isMoeda = campo.tipo === TipoCampo.MOEDA;
+  const isMoeda = campo.tipo === TipoPergunta.MOEDA;
+  const isPorcentagem = campo.tipo === TipoPergunta.PORCENTAGEM;
   return (
     <TextField
       {...field}
+      value={field.value ?? ""}
       type="number"
       label={campo.rotulo}
       helperText={error?.message ?? campo.ajuda}
@@ -14,11 +16,14 @@ export function CampoNumero({ campo, field, error }: FieldProps) {
       required={campo.obrigatorio}
       fullWidth
       size="small"
-      InputProps={
-        isMoeda
+      InputProps={{
+        ...(isMoeda
           ? { startAdornment: <InputAdornment position="start">R$</InputAdornment> }
-          : undefined
-      }
+          : {}),
+        ...(isPorcentagem
+          ? { endAdornment: <InputAdornment position="end">%</InputAdornment> }
+          : {}),
+      }}
       onChange={(e) => field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
     />
   );

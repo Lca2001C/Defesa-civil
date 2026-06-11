@@ -46,32 +46,59 @@ enum FormularioStatus {
   ARQUIVADO
 }
 
-/// Situacao de uma submissao (resposta de um municipio).
+/// Situacao de uma submissao (resposta de um municipio). Workflow de 6 estados.
 enum SubmissaoStatus {
   RASCUNHO
-  ENVIADA
-  EM_ANALISE
+  EM_PREENCHIMENTO
+  ENVIADO
   CORRECAO_SOLICITADA
-  REVISADA
-  VALIDADA
-  REJEITADA
+  REVISADO
+  APROVADO
 }
 
-/// Acao registrada no historico de revisao de uma submissao.
-enum RevisaoAcao {
-  SOLICITOU_CORRECAO
-  REVISOU
-  VALIDOU
-  REJEITOU
+/// Tipos de pergunta suportados pelo construtor visual de formularios.
+enum TipoPergunta {
+  TEXTO_CURTO
+  TEXTO_LONGO
+  NUMERO
+  DATA
+  EMAIL
+  TELEFONE
+  CPF
+  CNPJ
+  CEP
+  MOEDA
+  PORCENTAGEM
+  SIM_NAO
+  LISTA_SUSPENSA
+  RADIO
+  CHECKBOX
+  UPLOAD
+  URL
+  AUTOMATICO
 }
 
-/// Situacao de um lote de importacao em massa via Excel.
-enum ImportacaoStatus {
-  PENDENTE
-  PROCESSANDO
-  CONCLUIDA
-  CONCLUIDA_COM_ERROS
-  FALHOU
+/// Fonte de preenchimento de uma pergunta AUTOMATICO (resolvida no servidor).
+enum FonteAutomatica {
+  CODIGO_IBGE
+  MUNICIPIO_ATUAL
+  USUARIO_ATUAL
+  DATA_ATUAL
+  ANO_ATUAL
+  COMPETENCIA_ATUAL
+  PROTOCOLO
+}
+
+/// Operador de comparacao de uma regra condicional.
+enum OperadorCondicional {
+  IGUAL
+  DIFERENTE
+}
+
+/// Acao de uma regra condicional sobre a pergunta-alvo (quando a condicao e satisfeita).
+enum AcaoCondicional {
+  MOSTRAR
+  OCULTAR
 }
 
 // ========================= TERRITORIO ========================================
@@ -119,12 +146,11 @@ model Municipio {
   criadoEm     DateTime @default(now()) @map("created_at")
   atualizadoEm DateTime @updatedAt @map("updated_at")
 
-  uf              Uf               @relation(fields: [ufId], references: [id])
-  regional        Regional?        @relation(fields: [regionalId], references: [id])
-  compdec         Compdec?
-  usuarios        Usuario[]
-  submissoes      Submissao[]
-  importacaoLotes ImportacaoLote[]
+  uf         Uf          @relation(fields: [ufId], references: [id])
+  regional   Regional?   @relation(fields: [regionalId], references: [id])
+  compdec    Compdec?
+  usuarios   Usuario[]
+  submissoes Submissao[]
 
   @@index([ufId])
   @@index([regionalId])
@@ -203,11 +229,10 @@ model Usuario {
   mfaSecret  String?  @map("mfa_secret")
   mfaAtivo   Boolean  @default(false) @map("mfa_ativo")
 
-  submissoes  Submissao[]
-  revisoes    RevisaoSubmissao[]
-  importacoes ImportacaoLote[]
-  logs        LogAuditoria[]
-  aceites     AceiteTermoLgpd[]
+  submissoes Submissao[]
+  historico  RespostaHistorico[]
+  logs       LogAuditoria[]
+  aceites    AceiteTermoLgpd[]
 
   @@index([perfilId])
   @@index([municipioId])
@@ -254,27 +279,127 @@ model Formulario {
   @@map("formularios")
 }
 
-/// Versao imutavel de um formulario. `schema` (JSONB) descreve secoes/campos.
-/// `competenciaId` e obrigatorio na publicacao (validado na aplicacao).
+/// Versao imutavel de um formulario. A estrutura (secoes/perguntas/opcoes/regras)
+/// e NORMALIZADA em tabelas filhas. `competenciaId` e obrigatorio na publicacao.
 model FormularioVersao {
   id            String           @id @default(cuid())
   formularioId  String           @map("formulario_id")
   versao        Int
-  schema        Json
   competenciaId String?          @map("competencia_id")
   status        FormularioStatus @default(RASCUNHO)
   publicadoEm   DateTime?        @map("publicado_em")
   criadoEm      DateTime         @default(now()) @map("created_at")
   atualizadoEm  DateTime         @updatedAt @map("updated_at")
 
-  formulario      Formulario       @relation(fields: [formularioId], references: [id])
-  competencia     Competencia?     @relation(fields: [competenciaId], references: [id])
-  submissoes      Submissao[]
-  importacaoLotes ImportacaoLote[]
+  formulario  Formulario   @relation(fields: [formularioId], references: [id])
+  competencia Competencia? @relation(fields: [competenciaId], references: [id])
+  secoes      Secao[]
+  submissoes  Submissao[]
 
   @@unique([formularioId, versao])
   @@index([competenciaId])
   @@map("formulario_versoes")
+}
+
+/// Secao (agrupamento de perguntas) de uma versao de formulario.
+model Secao {
+  id        String  @id @default(cuid())
+  versaoId  String  @map("versao_id")
+  ordem     Int
+  titulo    String
+  descricao String?
+
+  versao    FormularioVersao @relation(fields: [versaoId], references: [id], onDelete: Cascade)
+  perguntas Pergunta[]
+
+  @@index([versaoId])
+  @@map("secoes")
+}
+
+/// Pergunta (campo) de uma secao. `codigo` e a chave estavel usada nas respostas.
+model Pergunta {
+  id              String           @id @default(cuid())
+  secaoId         String           @map("secao_id")
+  ordem           Int
+  codigo          String
+  rotulo          String
+  tipo            TipoPergunta
+  obrigatorio     Boolean          @default(false)
+  ajuda           String?
+  // Validacoes (usadas conforme o tipo)
+  min             Int?
+  max             Int?
+  padrao          String?
+  tamanhoMaximoMb Int?             @map("tamanho_maximo_mb")
+  tiposArquivo    String[]         @map("tipos_arquivo")
+  // Para tipo AUTOMATICO
+  fonteAutomatica FonteAutomatica? @map("fonte_automatica")
+
+  secao            Secao              @relation(fields: [secaoId], references: [id], onDelete: Cascade)
+  opcoes           OpcaoPergunta[]
+  regrasComoAlvo   RegraCondicional[] @relation("RegraAlvo")
+  regrasComoOrigem RegraCondicional[] @relation("RegraOrigem")
+  respostas        Resposta[]
+
+  @@index([secaoId])
+  @@map("perguntas")
+}
+
+/// Opcao de uma pergunta dos tipos LISTA_SUSPENSA, RADIO ou CHECKBOX.
+model OpcaoPergunta {
+  id         String @id @default(cuid())
+  perguntaId String @map("pergunta_id")
+  ordem      Int
+  valor      String
+  rotulo     String
+
+  pergunta Pergunta @relation(fields: [perguntaId], references: [id], onDelete: Cascade)
+
+  @@index([perguntaId])
+  @@map("opcoes_pergunta")
+}
+
+/// Regra condicional: quando a pergunta de origem satisfaz (operador, valor),
+/// aplica a acao (MOSTRAR/OCULTAR) sobre a pergunta-alvo.
+model RegraCondicional {
+  id               String              @id @default(cuid())
+  perguntaAlvoId   String              @map("pergunta_alvo_id")
+  perguntaOrigemId String              @map("pergunta_origem_id")
+  operador         OperadorCondicional @default(IGUAL)
+  valor            String
+  acao             AcaoCondicional     @default(MOSTRAR)
+
+  alvo   Pergunta @relation("RegraAlvo", fields: [perguntaAlvoId], references: [id], onDelete: Cascade)
+  origem Pergunta @relation("RegraOrigem", fields: [perguntaOrigemId], references: [id], onDelete: Cascade)
+
+  @@index([perguntaAlvoId])
+  @@index([perguntaOrigemId])
+  @@map("regras_condicionais")
+}
+
+/// Template de FORMULARIO INTEIRO (biblioteca). `schema` em JSON (SchemaFormulario).
+model FormularioTemplate {
+  id        String   @id @default(cuid())
+  nome      String
+  descricao String?
+  categoria String?
+  schema    Json
+  criadoEm  DateTime @default(now()) @map("created_at")
+
+  @@map("formulario_templates")
+}
+
+/// Bloco reutilizavel (grupo de perguntas) inserido pelo construtor numa secao.
+/// `conteudo` em JSON no formato de uma secao parcial (perguntas/opcoes/regras).
+model BlocoReutilizavel {
+  id        String   @id @default(cuid())
+  nome      String
+  descricao String?
+  categoria String?
+  conteudo  Json
+  criadoEm  DateTime @default(now()) @map("created_at")
+
+  @@map("blocos_reutilizaveis")
 }
 
 // ========================= SUBMISSOES ========================================
@@ -297,20 +422,18 @@ model Submissao {
   ipResposta          String?         @map("ip_resposta")
   userAgent           String?         @map("user_agent")
   status              SubmissaoStatus @default(RASCUNHO)
-  dados               Json
-  importacaoLoteId    String?         @map("importacao_lote_id")
   enviadoEm           DateTime?       @map("enviado_em")
-  validadoEm          DateTime?       @map("validado_em")
+  aprovadoEm          DateTime?       @map("aprovado_em")
   criadoEm            DateTime        @default(now()) @map("created_at")
   atualizadoEm        DateTime        @updatedAt @map("updated_at")
 
-  municipio        Municipio          @relation(fields: [municipioId], references: [id])
-  formularioVersao FormularioVersao   @relation(fields: [formularioVersaoId], references: [id])
-  competencia      Competencia        @relation(fields: [competenciaId], references: [id])
-  autor            Usuario            @relation(fields: [autorId], references: [id])
-  importacaoLote   ImportacaoLote?    @relation(fields: [importacaoLoteId], references: [id])
-  revisoes         RevisaoSubmissao[]
-  arquivos         SubmissaoArquivo[]
+  municipio        Municipio           @relation(fields: [municipioId], references: [id])
+  formularioVersao FormularioVersao    @relation(fields: [formularioVersaoId], references: [id])
+  competencia      Competencia         @relation(fields: [competenciaId], references: [id])
+  autor            Usuario             @relation(fields: [autorId], references: [id])
+  respostas        Resposta[]
+  historico        RespostaHistorico[]
+  anexos           AnexoSubmissao[]
 
   @@index([municipioId])
   @@index([competenciaId])
@@ -321,83 +444,58 @@ model Submissao {
   @@map("submissoes")
 }
 
-/// Historico imutavel de revisao de uma submissao (uma linha por acao),
-/// com snapshot dos dados antes da alteracao. Nao sobrescreve a resposta.
-model RevisaoSubmissao {
-  id            String      @id @default(cuid())
-  submissaoId   String      @map("submissao_id")
-  revisorId     String      @map("revisor_id")
-  acao          RevisaoAcao
-  comentario    String?
-  dadosSnapshot Json?       @map("dados_snapshot")
-  criadoEm      DateTime    @default(now()) @map("created_at")
+/// Resposta normalizada: uma linha por pergunta respondida na submissao.
+/// `valor` em JSON acomoda texto, numero, booleano ou lista (CHECKBOX).
+model Resposta {
+  id             String @id @default(cuid())
+  submissaoId    String @map("submissao_id")
+  perguntaId     String @map("pergunta_id")
+  perguntaCodigo String @map("pergunta_codigo")
+  valor          Json?
 
-  submissao Submissao @relation(fields: [submissaoId], references: [id])
-  revisor   Usuario   @relation(fields: [revisorId], references: [id])
+  submissao Submissao @relation(fields: [submissaoId], references: [id], onDelete: Cascade)
+  pergunta  Pergunta  @relation(fields: [perguntaId], references: [id])
 
+  @@unique([submissaoId, perguntaId])
   @@index([submissaoId])
-  @@map("revisoes_submissao")
+  @@map("respostas")
 }
 
-/// Anexos de uma submissao (campos do tipo ARQUIVO no schema do formulario):
-/// vincula um Arquivo do storage a uma Submissao, identificando o campo.
-model SubmissaoArquivo {
-  id          String   @id @default(cuid())
-  submissaoId String   @map("submissao_id")
-  arquivoId   String   @map("arquivo_id")
-  chaveCampo  String?  @map("chave_campo")
-  criadoEm    DateTime @default(now()) @map("created_at")
+/// Historico imutavel da submissao: uma linha por acao (envio, correcao, revisao,
+/// aprovacao, edicao), com snapshot das respostas antes da alteracao.
+model RespostaHistorico {
+  id             String           @id @default(cuid())
+  submissaoId    String           @map("submissao_id")
+  autorId        String           @map("autor_id")
+  acao           String
+  comentario     String?
+  statusAnterior SubmissaoStatus? @map("status_anterior")
+  statusNovo     SubmissaoStatus? @map("status_novo")
+  snapshot       Json?
+  criadoEm       DateTime         @default(now()) @map("created_at")
 
-  submissao Submissao @relation(fields: [submissaoId], references: [id])
+  submissao Submissao @relation(fields: [submissaoId], references: [id], onDelete: Cascade)
+  autor     Usuario   @relation(fields: [autorId], references: [id])
+
+  @@index([submissaoId])
+  @@map("respostas_historico")
+}
+
+/// Anexo de uma submissao. `perguntaCodigo` nulo = anexo geral; preenchido =
+/// resposta de uma pergunta UPLOAD. Vincula um Arquivo (storage) a Submissao.
+model AnexoSubmissao {
+  id             String   @id @default(cuid())
+  submissaoId    String   @map("submissao_id")
+  arquivoId      String   @map("arquivo_id")
+  perguntaCodigo String?  @map("pergunta_codigo")
+  criadoEm       DateTime @default(now()) @map("created_at")
+
+  submissao Submissao @relation(fields: [submissaoId], references: [id], onDelete: Cascade)
   arquivo   Arquivo   @relation(fields: [arquivoId], references: [id])
 
   @@index([submissaoId])
   @@index([arquivoId])
-  @@map("submissao_arquivos")
-}
-
-// ==================== IMPORTACAO EM MASSA ====================================
-
-/// Lote de importacao de dados via planilha Excel (Fluxo B).
-model ImportacaoLote {
-  id                 String           @id @default(cuid())
-  formularioVersaoId String           @map("formulario_versao_id")
-  competenciaId      String           @map("competencia_id")
-  municipioId        Int?             @map("municipio_id")
-  autorId            String           @map("autor_id")
-  arquivoId          String?          @map("arquivo_id")
-  status             ImportacaoStatus @default(PENDENTE)
-  totalLinhas        Int              @default(0) @map("total_linhas")
-  linhasValidas      Int              @default(0) @map("linhas_validas")
-  linhasComErro      Int              @default(0) @map("linhas_com_erro")
-  criadoEm           DateTime         @default(now()) @map("created_at")
-  atualizadoEm       DateTime         @updatedAt @map("updated_at")
-
-  formularioVersao FormularioVersao @relation(fields: [formularioVersaoId], references: [id])
-  municipio        Municipio?       @relation(fields: [municipioId], references: [id])
-  autor            Usuario          @relation(fields: [autorId], references: [id])
-  arquivo          Arquivo?         @relation(fields: [arquivoId], references: [id])
-  submissoes       Submissao[]
-  erros            ErroImportacao[]
-
-  @@index([formularioVersaoId])
-  @@index([status])
-  @@map("importacao_lotes")
-}
-
-/// Erro de validacao de uma linha durante a importacao (relatorio de erros).
-model ErroImportacao {
-  id       String   @id @default(cuid())
-  loteId   String   @map("lote_id")
-  linha    Int
-  coluna   String?
-  mensagem String
-  criadoEm DateTime @default(now()) @map("created_at")
-
-  lote ImportacaoLote @relation(fields: [loteId], references: [id])
-
-  @@index([loteId])
-  @@map("erros_importacao")
+  @@map("anexos_submissao")
 }
 
 // ===================== PROTOCOLO / ARQUIVO / AUDITORIA =======================
@@ -424,8 +522,7 @@ model Arquivo {
   driver       String
   criadoEm     DateTime @default(now()) @map("created_at")
 
-  importacaoLotes   ImportacaoLote[]
-  submissaoArquivos SubmissaoArquivo[]
+  anexos AnexoSubmissao[]
 
   @@map("arquivos")
 }

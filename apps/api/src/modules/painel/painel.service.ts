@@ -5,12 +5,11 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 export type StatusMapa = 'RESPONDIDO' | 'EM_PREENCHIMENTO' | 'NAO_RESPONDEU';
 
 const PRIORIDADE_STATUS: Record<string, number> = {
-  ENVIADA: 3,
-  EM_ANALISE: 3,
+  ENVIADO: 3,
   CORRECAO_SOLICITADA: 3,
-  REVISADA: 3,
-  VALIDADA: 3,
-  REJEITADA: 2,
+  REVISADO: 3,
+  APROVADO: 3,
+  EM_PREENCHIMENTO: 1,
   RASCUNHO: 1,
 };
 

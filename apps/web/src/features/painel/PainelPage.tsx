@@ -495,9 +495,9 @@ export default function PainelPage() {
                             height: 18,
                             fontSize: "0.6rem",
                             bgcolor:
-                              s.status === "VALIDADA"
+                              s.status === "APROVADO"
                                 ? cores.verdeSucesso
-                                : s.status === "REJEITADA"
+                                : s.status === "CORRECAO_SOLICITADA"
                                   ? cores.vermelhoErro
                                   : cores.amareloAtencao,
                             color: "#fff",

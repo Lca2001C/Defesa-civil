@@ -2,27 +2,22 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsObject } from 'class-validator';
 
 /**
- * Schema do formulario (SchemaFormulario de @dcmg/contracts).
- * Validacao de estrutura interna e feita no servico; aqui garantimos apenas
- * que o campo e um objeto JSON valido.
+ * Schema declarativo do formulario (SchemaFormulario de @dcmg/contracts).
+ * A validacao estrutural e a decomposicao em linhas (Secao/Pergunta/Opcao/Regra)
+ * sao feitas no servico; aqui garantimos apenas que e um objeto JSON.
  */
 export class CriarVersaoDto {
   @ApiProperty({
     description: 'Schema declarativo do formulário (SchemaFormulario).',
     example: {
       versao: 1,
-      titulo: 'Plano Municipal',
+      titulo: 'Diagnóstico COMPDEC',
       secoes: [
         {
-          chave: 'identificacao',
-          titulo: 'Identificação',
-          campos: [
-            {
-              chave: 'nomeMunicipio',
-              rotulo: 'Nome do Município',
-              tipo: 'TEXTO',
-              obrigatorio: true,
-            },
+          titulo: 'Identificação do Município',
+          perguntas: [
+            { codigo: 'codigo_ibge', rotulo: 'Código IBGE', tipo: 'AUTOMATICO', obrigatorio: true, fonteAutomatica: 'CODIGO_IBGE' },
+            { codigo: 'nome_municipio', rotulo: 'Nome do Município', tipo: 'TEXTO_CURTO', obrigatorio: true },
           ],
         },
       ],

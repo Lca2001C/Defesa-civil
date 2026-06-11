@@ -1,18 +1,22 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request, Express } from 'express';
 import { SubmissaoStatus } from '@prisma/client';
 import { SubmissoesService } from './submissoes.service';
 import { CriarSubmissaoDto } from './dto/criar-submissao.dto';
@@ -67,14 +71,14 @@ export class SubmissoesController {
 
   @Get(':id')
   @Permissao('submissoes.criar')
-  @ApiOperation({ summary: 'Buscar submissão por ID' })
+  @ApiOperation({ summary: 'Buscar submissão por ID (com schema composto, dados e anexos)' })
   buscar(@Param('id') id: string, @UsuarioAtual() usuario: JwtPayload) {
     return this.service.buscarPorId(id, usuario);
   }
 
   @Patch(':id')
   @Permissao('submissoes.editar')
-  @ApiOperation({ summary: 'Atualizar dados de um rascunho ou submissão em correção' })
+  @ApiOperation({ summary: 'Atualizar respostas de um rascunho ou submissão em correção' })
   atualizar(
     @Param('id') id: string,
     @Body() dto: AtualizarSubmissaoDto,
@@ -86,7 +90,7 @@ export class SubmissoesController {
   @Patch(':id/enviar')
   @HttpCode(HttpStatus.OK)
   @Permissao('submissoes.criar')
-  @ApiOperation({ summary: 'Enviar rascunho → ENVIADA (gera protocolo)' })
+  @ApiOperation({ summary: 'Enviar → ENVIADO (gera protocolo)' })
   enviar(@Param('id') id: string, @UsuarioAtual() usuario: JwtPayload) {
     return this.service.enviar(id, usuario);
   }
@@ -106,7 +110,7 @@ export class SubmissoesController {
   @Patch(':id/revisar')
   @HttpCode(HttpStatus.OK)
   @Permissao('submissoes.editar')
-  @ApiOperation({ summary: 'Reenviar submissão corrigida → REVISADA' })
+  @ApiOperation({ summary: 'Reenviar submissão corrigida → REVISADO' })
   revisar(
     @Param('id') id: string,
     @Body() dto: RevisaoDto,
@@ -115,27 +119,51 @@ export class SubmissoesController {
     return this.service.revisar(id, dto, usuario);
   }
 
-  @Patch(':id/validar')
+  @Patch(':id/aprovar')
   @HttpCode(HttpStatus.OK)
   @Permissao('submissoes.validar')
-  @ApiOperation({ summary: 'Validar submissão → VALIDADA' })
-  validar(
+  @ApiOperation({ summary: 'Aprovar submissão → APROVADO' })
+  aprovar(
     @Param('id') id: string,
     @Body() dto: RevisaoDto,
     @UsuarioAtual() usuario: JwtPayload,
   ) {
-    return this.service.validar(id, dto, usuario);
+    return this.service.aprovar(id, dto, usuario);
   }
 
-  @Patch(':id/rejeitar')
-  @HttpCode(HttpStatus.OK)
-  @Permissao('submissoes.validar')
-  @ApiOperation({ summary: 'Rejeitar submissão → REJEITADA' })
-  rejeitar(
+  // ----------------------------------------------------------------- anexos --
+
+  @Get(':id/anexos')
+  @Permissao('submissoes.criar')
+  @ApiOperation({ summary: 'Lista os anexos de uma submissão' })
+  listarAnexos(@Param('id') id: string, @UsuarioAtual() usuario: JwtPayload) {
+    return this.service.listarAnexos(id, usuario);
+  }
+
+  @Post(':id/anexos')
+  @HttpCode(HttpStatus.CREATED)
+  @Permissao('submissoes.editar')
+  @UseInterceptors(FileInterceptor('arquivo', { storage: memoryStorage() }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Anexa um arquivo (PDF/DOCX/XLSX/ZIP/PNG/JPG) à submissão' })
+  adicionarAnexo(
     @Param('id') id: string,
-    @Body() dto: RevisaoDto,
+    @UploadedFile() arquivo: Express.Multer.File,
+    @UsuarioAtual() usuario: JwtPayload,
+    @Body('perguntaCodigo') perguntaCodigo?: string,
+  ) {
+    return this.service.adicionarAnexo(id, arquivo, usuario, perguntaCodigo);
+  }
+
+  @Delete(':id/anexos/:anexoId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Permissao('submissoes.editar')
+  @ApiOperation({ summary: 'Remove um anexo da submissão' })
+  removerAnexo(
+    @Param('id') id: string,
+    @Param('anexoId') anexoId: string,
     @UsuarioAtual() usuario: JwtPayload,
   ) {
-    return this.service.rejeitar(id, dto, usuario);
+    return this.service.removerAnexo(id, anexoId, usuario);
   }
 }

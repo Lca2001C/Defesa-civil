@@ -5,8 +5,7 @@ import { Queue } from 'bullmq';
 export type TipoNotificacao =
   | 'submissao_enviada'
   | 'correcao_solicitada'
-  | 'submissao_validada'
-  | 'submissao_rejeitada';
+  | 'submissao_aprovada';
 
 export interface NotificacaoPayload {
   tipo: TipoNotificacao;

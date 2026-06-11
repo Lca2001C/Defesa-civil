@@ -6,27 +6,38 @@ import {
 } from '@nestjs/common';
 import {
   CompetenciaStatus,
+  FonteAutomatica,
   FormularioStatus,
   Prisma,
   SubmissaoStatus,
-  RevisaoAcao,
+  TipoPergunta,
 } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { FormulariosService } from '../formularios/formularios.service';
+import { StorageService } from '../../infra/storage/storage.service';
+import { NotificacoesService } from '../notificacoes/notificacoes.service';
 import type { PaginacaoDto } from '../../common/dto/paginacao.dto';
 import type { JwtPayload } from '../../common/types/jwt-payload';
 import type { CriarSubmissaoDto } from './dto/criar-submissao.dto';
 import type { AtualizarSubmissaoDto } from './dto/atualizar-submissao.dto';
 import type { RevisaoDto } from './dto/revisao.dto';
-import { NotificacoesService } from '../notificacoes/notificacoes.service';
 
-// Transições válidas de status
-const TRANSICOES: Partial<Record<SubmissaoStatus, SubmissaoStatus>> = {
-  [SubmissaoStatus.RASCUNHO]: SubmissaoStatus.ENVIADA,
-  [SubmissaoStatus.ENVIADA]: SubmissaoStatus.EM_ANALISE,
-  [SubmissaoStatus.EM_ANALISE]: SubmissaoStatus.CORRECAO_SOLICITADA,
-  [SubmissaoStatus.CORRECAO_SOLICITADA]: SubmissaoStatus.REVISADA,
-};
+type StatusMapa = 'RESPONDIDO' | 'EM_PREENCHIMENTO' | 'NAO_RESPONDEU';
+
+/** MIME types aceitos para anexos de submissão. */
+const MIME_ANEXO_PERMITIDOS = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // DOCX
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // XLSX
+  'application/vnd.ms-excel',
+  'application/zip',
+  'application/x-zip-compressed',
+  'image/png',
+  'image/jpeg',
+]);
+const EXT_ANEXO_PERMITIDAS = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.zip', '.png', '.jpg', '.jpeg'];
 
 @Injectable()
 export class SubmissoesService {
@@ -34,23 +45,18 @@ export class SubmissoesService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
     private readonly notificacoes: NotificacoesService,
+    private readonly formularios: FormulariosService,
+    private readonly storage: StorageService,
   ) {}
 
   // ------------------------------------------------------------------ criar --
 
-  async criar(
-    dto: CriarSubmissaoDto,
-    usuario: JwtPayload,
-    ip?: string,
-    userAgent?: string,
-  ) {
-    // Busca dados do usuário para o snapshot
+  async criar(dto: CriarSubmissaoDto, usuario: JwtPayload, ip?: string, userAgent?: string) {
     const autor = await this.prisma.usuario.findUniqueOrThrow({
       where: { id: usuario.sub },
       select: { nome: true, cpf: true, cargo: true, email: true, telefone: true },
     });
 
-    // Valida versão e competência
     const versao = await this.prisma.formularioVersao.findUnique({
       where: { id: dto.formularioVersaoId },
     });
@@ -67,33 +73,59 @@ export class SubmissoesService {
       throw new BadRequestException('A competência precisa estar ABERTA para enviar respostas.');
     }
 
-    const enviar = dto.enviarImediatamente === true;
+    const municipio = await this.prisma.municipio.findUnique({
+      where: { id: dto.municipioId },
+      select: { nome: true },
+    });
 
-    // Gera protocolo apenas ao enviar
+    const enviar = dto.enviarImediatamente === true;
     const protocolo = enviar
       ? await this.gerarProtocolo('MG', new Date().getFullYear())
-      : `RASCUNHO-${Date.now()}`;
+      : `RASCUNHO-${usuario.sub.slice(0, 8)}-${Date.now()}`;
 
-    const submissao = await this.prisma.submissao.create({
-      data: {
-        protocolo,
-        municipioId: dto.municipioId,
-        formularioVersaoId: dto.formularioVersaoId,
-        competenciaId: dto.competenciaId,
-        autorId: usuario.sub,
-        nomeRespondente: dto.nomeRespondente ?? autor.nome,
-        cpfRespondente: dto.cpfRespondente ?? autor.cpf,
-        cargoRespondente: dto.cargoRespondente ?? autor.cargo ?? null,
-        emailRespondente: dto.emailRespondente ?? autor.email,
-        telefoneRespondente: dto.telefoneRespondente ?? autor.telefone ?? null,
-        ipResposta: ip ?? null,
-        userAgent: userAgent ?? null,
-        status: enviar ? SubmissaoStatus.ENVIADA : SubmissaoStatus.RASCUNHO,
-        dados: dto.dados as object,
-        enviadoEm: enviar ? new Date() : null,
-      },
-      include: { municipio: { select: { nome: true } } },
+    // Mescla os valores AUTOMATICO resolvidos no servidor sobre os dados enviados.
+    const automaticos = await this.resolverAutomaticos(dto.formularioVersaoId, {
+      municipioId: dto.municipioId,
+      municipioNome: municipio?.nome ?? '',
+      autorNome: autor.nome,
+      competenciaNome: competencia.nome,
+      protocolo: enviar ? protocolo : '',
     });
+    const dados = { ...dto.dados, ...automaticos };
+
+    const status = enviar
+      ? SubmissaoStatus.ENVIADO
+      : Object.keys(dto.dados).length > 0
+        ? SubmissaoStatus.EM_PREENCHIMENTO
+        : SubmissaoStatus.RASCUNHO;
+
+    const submissao = await this.prisma.$transaction(async (tx) => {
+      const nova = await tx.submissao.create({
+        data: {
+          protocolo,
+          municipioId: dto.municipioId,
+          formularioVersaoId: dto.formularioVersaoId,
+          competenciaId: dto.competenciaId,
+          autorId: usuario.sub,
+          nomeRespondente: dto.nomeRespondente ?? autor.nome,
+          cpfRespondente: dto.cpfRespondente ?? autor.cpf,
+          cargoRespondente: dto.cargoRespondente ?? autor.cargo ?? null,
+          emailRespondente: dto.emailRespondente ?? autor.email,
+          telefoneRespondente: dto.telefoneRespondente ?? autor.telefone ?? null,
+          ipResposta: ip ?? null,
+          userAgent: userAgent ?? null,
+          status,
+          enviadoEm: enviar ? new Date() : null,
+        },
+      });
+      await this.sincronizarRespostas(tx, nova.id, dto.formularioVersaoId, dados);
+      return nova;
+    });
+
+    if (enviar) {
+      this.emitirStatus(submissao.municipioId, submissao.competenciaId, 'RESPONDIDO', submissao.protocolo);
+      this.notificar('submissao_enviada', submissao);
+    }
 
     return submissao;
   }
@@ -121,7 +153,6 @@ export class SubmissoesService {
       ...(filtros.status ? { status: filtros.status } : {}),
     };
 
-    // Escopo multi-tenant: operador municipal vê apenas seu município
     if (usuario.escopo === 'MUNICIPAL' && usuario.municipioId) {
       where.municipioId = usuario.municipioId;
     } else if (usuario.escopo === 'REGIONAL' && usuario.regionalId) {
@@ -139,7 +170,7 @@ export class SubmissoesService {
           formularioVersao: {
             select: { versao: true, formulario: { select: { nome: true } } },
           },
-          _count: { select: { revisoes: true } },
+          _count: { select: { historico: true, anexos: true } },
         },
       }),
       this.prisma.submissao.count({ where }),
@@ -156,188 +187,389 @@ export class SubmissoesService {
       include: {
         municipio: { select: { nome: true, uf: { select: { sigla: true } } } },
         formularioVersao: {
-          select: {
-            versao: true,
-            schema: true,
-            formulario: { select: { nome: true } },
-          },
+          select: { id: true, versao: true, formulario: { select: { nome: true } } },
         },
         competencia: { select: { nome: true, status: true } },
         autor: { select: { nome: true, email: true } },
-        revisoes: { orderBy: { criadoEm: 'asc' }, include: { revisor: { select: { nome: true } } } },
+        respostas: { select: { perguntaCodigo: true, valor: true } },
+        historico: {
+          orderBy: { criadoEm: 'asc' },
+          include: { autor: { select: { nome: true } } },
+        },
+        anexos: { include: { arquivo: true }, orderBy: { criadoEm: 'desc' } },
       },
     });
     if (!sub) throw new NotFoundException('Submissão não encontrada.');
     this.verificarEscopo(sub, usuario);
-    return sub;
+
+    const schema = await this.formularios.comporSchema(sub.formularioVersaoId);
+    const dados: Record<string, unknown> = {};
+    for (const r of sub.respostas) dados[r.perguntaCodigo] = r.valor;
+
+    return { ...sub, schema, dados };
   }
 
   // ---------------------------------------------------------------- atualizar --
 
   async atualizar(id: string, dto: AtualizarSubmissaoDto, usuario: JwtPayload) {
-    const sub = await this.buscarPorId(id, usuario);
-    if (sub.status !== SubmissaoStatus.RASCUNHO && sub.status !== SubmissaoStatus.CORRECAO_SOLICITADA) {
+    const sub = await this.carregarParaEscopo(id, usuario);
+    if (
+      sub.status !== SubmissaoStatus.RASCUNHO &&
+      sub.status !== SubmissaoStatus.EM_PREENCHIMENTO &&
+      sub.status !== SubmissaoStatus.CORRECAO_SOLICITADA
+    ) {
       throw new BadRequestException(
-        `Só é possível editar submissões em RASCUNHO ou CORRECAO_SOLICITADA. Status: ${sub.status}`,
+        `Só é possível editar submissões em RASCUNHO, EM_PREENCHIMENTO ou CORRECAO_SOLICITADA. Status: ${sub.status}`,
       );
     }
-    return this.prisma.submissao.update({
-      where: { id },
-      data: { ...(dto.dados ? { dados: dto.dados as object } : {}) },
+    if (!dto.dados) return sub;
+
+    const snapshot = await this.lerDados(this.prisma, id);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.respostaHistorico.create({
+        data: {
+          submissaoId: id,
+          autorId: usuario.sub,
+          acao: 'EDITOU',
+          statusAnterior: sub.status,
+          statusNovo: sub.status === SubmissaoStatus.RASCUNHO ? SubmissaoStatus.EM_PREENCHIMENTO : sub.status,
+          snapshot: snapshot as Prisma.InputJsonValue,
+        },
+      });
+      await this.sincronizarRespostas(tx, id, sub.formularioVersaoId, dto.dados!);
+      return tx.submissao.update({
+        where: { id },
+        data: sub.status === SubmissaoStatus.RASCUNHO ? { status: SubmissaoStatus.EM_PREENCHIMENTO } : {},
+      });
     });
   }
 
   // ------------------------------------------------------------------- enviar --
 
   async enviar(id: string, usuario: JwtPayload) {
-    const sub = await this.buscarPorId(id, usuario);
-    if (sub.status !== SubmissaoStatus.RASCUNHO) {
+    const sub = await this.carregarParaEscopo(id, usuario);
+    if (sub.status !== SubmissaoStatus.RASCUNHO && sub.status !== SubmissaoStatus.EM_PREENCHIMENTO) {
       throw new BadRequestException(`Status inválido para envio: ${sub.status}`);
     }
 
     const protocolo = await this.gerarProtocolo('MG', new Date().getFullYear());
 
-    const atualizado = await this.prisma.submissao.update({
-      where: { id },
-      data: { status: SubmissaoStatus.ENVIADA, protocolo, enviadoEm: new Date() },
-    });
+    // Recalcula AUTOMATICO agora que protocolo/competência são conhecidos.
+    const ctx = await this.contextoAutomatico(sub.id);
+    const automaticos = await this.resolverAutomaticos(sub.formularioVersaoId, { ...ctx, protocolo });
+    const snapshot = await this.lerDados(this.prisma, id);
 
-    this.realtime.emitirStatusUpdate({
-      municipioId: atualizado.municipioId,
-      competenciaId: atualizado.competenciaId,
-      status: 'RESPONDIDO',
-      protocolo: atualizado.protocolo,
-    });
-
-    if (sub.emailRespondente) {
-      void this.notificacoes.notificar({
-        tipo: 'submissao_enviada',
-        destinatario: sub.emailRespondente,
-        nome: sub.nomeRespondente ?? '',
-        protocolo: atualizado.protocolo,
+    const atualizado = await this.prisma.$transaction(async (tx) => {
+      await this.upsertRespostas(tx, id, sub.formularioVersaoId, automaticos);
+      await tx.respostaHistorico.create({
+        data: {
+          submissaoId: id,
+          autorId: usuario.sub,
+          acao: 'ENVIOU',
+          statusAnterior: sub.status,
+          statusNovo: SubmissaoStatus.ENVIADO,
+          snapshot: snapshot as Prisma.InputJsonValue,
+        },
       });
-    }
+      return tx.submissao.update({
+        where: { id },
+        data: { status: SubmissaoStatus.ENVIADO, protocolo, enviadoEm: new Date() },
+      });
+    });
 
+    this.emitirStatus(atualizado.municipioId, atualizado.competenciaId, 'RESPONDIDO', atualizado.protocolo);
+    this.notificar('submissao_enviada', atualizado);
     return atualizado;
   }
 
   // ------------------------------------------------- solicitar correção -------
 
   async solicitarCorrecao(id: string, dto: RevisaoDto, usuario: JwtPayload) {
-    const sub = await this.buscarPorId(id, usuario);
-    if (
-      sub.status !== SubmissaoStatus.ENVIADA &&
-      sub.status !== SubmissaoStatus.EM_ANALISE &&
-      sub.status !== SubmissaoStatus.REVISADA
-    ) {
+    const sub = await this.carregarParaEscopo(id, usuario);
+    if (sub.status !== SubmissaoStatus.ENVIADO && sub.status !== SubmissaoStatus.REVISADO) {
       throw new BadRequestException(`Não é possível solicitar correção com status: ${sub.status}`);
     }
-    return this.transicionar(sub, SubmissaoStatus.CORRECAO_SOLICITADA, RevisaoAcao.SOLICITOU_CORRECAO, dto.comentario, usuario.sub);
+    return this.transicionar(sub, SubmissaoStatus.CORRECAO_SOLICITADA, 'SOLICITOU_CORRECAO', dto.comentario, usuario.sub);
   }
 
   // ------------------------------------------------------------------ revisar --
 
   async revisar(id: string, dto: RevisaoDto, usuario: JwtPayload) {
-    const sub = await this.buscarPorId(id, usuario);
+    const sub = await this.carregarParaEscopo(id, usuario);
     if (sub.status !== SubmissaoStatus.CORRECAO_SOLICITADA) {
       throw new BadRequestException(`Status inválido para revisão: ${sub.status}`);
     }
-    return this.transicionar(sub, SubmissaoStatus.REVISADA, RevisaoAcao.REVISOU, dto.comentario, usuario.sub);
+    return this.transicionar(sub, SubmissaoStatus.REVISADO, 'REVISOU', dto.comentario, usuario.sub);
   }
 
-  // ------------------------------------------------------------------ validar --
+  // ------------------------------------------------------------------ aprovar --
 
-  async validar(id: string, dto: RevisaoDto, usuario: JwtPayload) {
-    const sub = await this.buscarPorId(id, usuario);
-    if (sub.status !== SubmissaoStatus.ENVIADA && sub.status !== SubmissaoStatus.REVISADA) {
-      throw new BadRequestException(`Status inválido para validação: ${sub.status}`);
+  async aprovar(id: string, dto: RevisaoDto, usuario: JwtPayload) {
+    const sub = await this.carregarParaEscopo(id, usuario);
+    if (sub.status !== SubmissaoStatus.ENVIADO && sub.status !== SubmissaoStatus.REVISADO) {
+      throw new BadRequestException(`Status inválido para aprovação: ${sub.status}`);
     }
-    return this.transicionar(sub, SubmissaoStatus.VALIDADA, RevisaoAcao.VALIDOU, dto.comentario, usuario.sub);
+    return this.transicionar(sub, SubmissaoStatus.APROVADO, 'APROVOU', dto.comentario, usuario.sub);
   }
 
-  // ------------------------------------------------------------------ rejeitar --
+  // ------------------------------------------------------------------- anexos --
 
-  async rejeitar(id: string, dto: RevisaoDto, usuario: JwtPayload) {
-    const sub = await this.buscarPorId(id, usuario);
-    if (sub.status === SubmissaoStatus.VALIDADA || sub.status === SubmissaoStatus.RASCUNHO) {
-      throw new BadRequestException(`Não é possível rejeitar uma submissão com status: ${sub.status}`);
+  async listarAnexos(id: string, usuario: JwtPayload) {
+    await this.carregarParaEscopo(id, usuario);
+    return this.prisma.anexoSubmissao.findMany({
+      where: { submissaoId: id },
+      include: { arquivo: true },
+      orderBy: { criadoEm: 'desc' },
+    });
+  }
+
+  async adicionarAnexo(
+    id: string,
+    arquivo: { buffer: Buffer; originalname: string; mimetype: string; size: number },
+    usuario: JwtPayload,
+    perguntaCodigo?: string,
+  ) {
+    await this.carregarParaEscopo(id, usuario);
+    if (!arquivo) throw new BadRequestException('Arquivo obrigatório.');
+
+    const ext = arquivo.originalname.slice(arquivo.originalname.lastIndexOf('.')).toLowerCase();
+    const mimeOk = MIME_ANEXO_PERMITIDOS.has(arquivo.mimetype);
+    const extOk = EXT_ANEXO_PERMITIDAS.includes(ext);
+    if (!mimeOk && !extOk) {
+      throw new BadRequestException('Tipo de arquivo não permitido. Aceitos: PDF, DOCX, XLSX, ZIP, PNG, JPG.');
     }
-    return this.transicionar(sub, SubmissaoStatus.REJEITADA, RevisaoAcao.REJEITOU, dto.comentario, usuario.sub);
+
+    const maxMb = 25;
+    if (arquivo.size > maxMb * 1024 * 1024) {
+      throw new BadRequestException(`Arquivo excede o limite de ${maxMb} MB.`);
+    }
+
+    const arq = await this.storage.salvar(arquivo.buffer, arquivo.originalname, arquivo.mimetype);
+    return this.prisma.anexoSubmissao.create({
+      data: { submissaoId: id, arquivoId: arq.id, perguntaCodigo: perguntaCodigo ?? null },
+      include: { arquivo: true },
+    });
+  }
+
+  async removerAnexo(id: string, anexoId: string, usuario: JwtPayload) {
+    await this.carregarParaEscopo(id, usuario);
+    const anexo = await this.prisma.anexoSubmissao.findUnique({
+      where: { id: anexoId },
+      include: { arquivo: true },
+    });
+    if (!anexo || anexo.submissaoId !== id) {
+      throw new NotFoundException('Anexo não encontrado nesta submissão.');
+    }
+    await this.prisma.anexoSubmissao.delete({ where: { id: anexoId } });
+    await this.storage.deletar(anexo.arquivo.chave);
   }
 
   // ------------------------------------------------------------------ helpers --
 
   private async transicionar(
-    sub: { id: string; dados: unknown; municipioId: number; competenciaId: string; emailRespondente: string | null; nomeRespondente: string | null },
+    sub: { id: string; municipioId: number; competenciaId: string; status: SubmissaoStatus; emailRespondente: string | null; nomeRespondente: string; protocolo: string },
     novoStatus: SubmissaoStatus,
-    acao: RevisaoAcao,
+    acao: string,
     comentario: string | undefined,
-    revisorId: string,
+    autorId: string,
   ) {
+    const snapshot = await this.lerDados(this.prisma, sub.id);
+
     const atualizado = await this.prisma.$transaction(async (tx) => {
-      await tx.revisaoSubmissao.create({
+      await tx.respostaHistorico.create({
         data: {
           submissaoId: sub.id,
-          revisorId,
+          autorId,
           acao,
           comentario: comentario ?? null,
-          dadosSnapshot: sub.dados as object,
+          statusAnterior: sub.status,
+          statusNovo: novoStatus,
+          snapshot: snapshot as Prisma.InputJsonValue,
         },
       });
       return tx.submissao.update({
         where: { id: sub.id },
         data: {
           status: novoStatus,
-          ...(novoStatus === SubmissaoStatus.VALIDADA ? { validadoEm: new Date() } : {}),
+          ...(novoStatus === SubmissaoStatus.APROVADO ? { aprovadoEm: new Date() } : {}),
         },
       });
     });
 
-    // Emit evento WebSocket para o painel em tempo real
-    const statusMapa =
-      novoStatus === SubmissaoStatus.RASCUNHO
-        ? 'EM_PREENCHIMENTO'
-        : novoStatus === SubmissaoStatus.REJEITADA
-        ? 'NAO_RESPONDEU'
-        : 'RESPONDIDO';
+    this.emitirStatus(sub.municipioId, sub.competenciaId, this.statusMapa(novoStatus));
 
-    this.realtime.emitirStatusUpdate({
-      municipioId: sub.municipioId,
-      competenciaId: sub.competenciaId,
-      status: statusMapa as 'RESPONDIDO' | 'EM_PREENCHIMENTO' | 'NAO_RESPONDEU',
-    });
-
-    const tipoNotificacao =
-      acao === RevisaoAcao.SOLICITOU_CORRECAO
-        ? 'correcao_solicitada' as const
-        : acao === RevisaoAcao.VALIDOU
-        ? 'submissao_validada' as const
-        : acao === RevisaoAcao.REJEITOU
-        ? 'submissao_rejeitada' as const
-        : null;
-
-    if (tipoNotificacao && sub.emailRespondente) {
-      void this.notificacoes.notificar({
-        tipo: tipoNotificacao,
-        destinatario: sub.emailRespondente,
-        nome: sub.nomeRespondente ?? '',
-        protocolo: atualizado.protocolo,
-        observacao: comentario,
-      });
-    }
+    if (acao === 'SOLICITOU_CORRECAO') this.notificar('correcao_solicitada', atualizado, comentario);
+    if (acao === 'APROVOU') this.notificar('submissao_aprovada', atualizado);
 
     return atualizado;
   }
 
-  private verificarEscopo(
-    sub: { municipioId: number; autorId: string },
-    usuario: JwtPayload,
+  private statusMapa(status: SubmissaoStatus): StatusMapa {
+    if (status === SubmissaoStatus.RASCUNHO || status === SubmissaoStatus.EM_PREENCHIMENTO) {
+      return 'EM_PREENCHIMENTO';
+    }
+    return 'RESPONDIDO';
+  }
+
+  private emitirStatus(municipioId: number, competenciaId: string, status: StatusMapa, protocolo?: string) {
+    this.realtime.emitirStatusUpdate({ municipioId, competenciaId, status, protocolo });
+  }
+
+  private notificar(
+    tipo: 'submissao_enviada' | 'correcao_solicitada' | 'submissao_aprovada',
+    sub: { emailRespondente: string | null; nomeRespondente: string; protocolo: string },
+    observacao?: string,
   ) {
+    if (!sub.emailRespondente) return;
+    void this.notificacoes.notificar({
+      tipo,
+      destinatario: sub.emailRespondente,
+      nome: sub.nomeRespondente ?? '',
+      protocolo: sub.protocolo,
+      observacao,
+    });
+  }
+
+  private verificarEscopo(sub: { municipioId: number; autorId: string }, usuario: JwtPayload) {
     if (usuario.escopo === 'MUNICIPAL') {
       if (sub.municipioId !== usuario.municipioId && sub.autorId !== usuario.sub) {
         throw new ForbiddenException('Acesso negado a esta submissão.');
       }
     }
+  }
+
+  private async carregarParaEscopo(id: string, usuario: JwtPayload) {
+    const sub = await this.prisma.submissao.findUnique({ where: { id } });
+    if (!sub) throw new NotFoundException('Submissão não encontrada.');
+    this.verificarEscopo(sub, usuario);
+    return sub;
+  }
+
+  /** Lê as respostas atuais como { codigo: valor }. */
+  private async lerDados(
+    db: PrismaService | Prisma.TransactionClient,
+    submissaoId: string,
+  ): Promise<Record<string, unknown>> {
+    const respostas = await db.resposta.findMany({
+      where: { submissaoId },
+      select: { perguntaCodigo: true, valor: true },
+    });
+    const dados: Record<string, unknown> = {};
+    for (const r of respostas) dados[r.perguntaCodigo] = r.valor;
+    return dados;
+  }
+
+  /** Substitui todas as respostas da submissão pelos valores informados. */
+  private async sincronizarRespostas(
+    tx: Prisma.TransactionClient,
+    submissaoId: string,
+    versaoId: string,
+    dados: Record<string, unknown>,
+  ): Promise<void> {
+    const perguntas = await tx.pergunta.findMany({
+      where: { secao: { versaoId } },
+      select: { id: true, codigo: true },
+    });
+    const mapa = new Map(perguntas.map((p) => [p.codigo, p.id]));
+
+    await tx.resposta.deleteMany({ where: { submissaoId } });
+
+    const rows = Object.entries(dados)
+      .filter(([codigo]) => mapa.has(codigo))
+      .map(([codigo, valor]) => ({
+        submissaoId,
+        perguntaId: mapa.get(codigo)!,
+        perguntaCodigo: codigo,
+        valor: (valor ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+      }));
+
+    if (rows.length) await tx.resposta.createMany({ data: rows });
+  }
+
+  /** Insere/atualiza apenas as respostas informadas (sem apagar as demais). */
+  private async upsertRespostas(
+    tx: Prisma.TransactionClient,
+    submissaoId: string,
+    versaoId: string,
+    dados: Record<string, unknown>,
+  ): Promise<void> {
+    const perguntas = await tx.pergunta.findMany({
+      where: { secao: { versaoId } },
+      select: { id: true, codigo: true },
+    });
+    const mapa = new Map(perguntas.map((p) => [p.codigo, p.id]));
+
+    for (const [codigo, valor] of Object.entries(dados)) {
+      const perguntaId = mapa.get(codigo);
+      if (!perguntaId) continue;
+      const valorJson = (valor ?? Prisma.JsonNull) as Prisma.InputJsonValue;
+      await tx.resposta.upsert({
+        where: { submissaoId_perguntaId: { submissaoId, perguntaId } },
+        create: { submissaoId, perguntaId, perguntaCodigo: codigo, valor: valorJson },
+        update: { valor: valorJson },
+      });
+    }
+  }
+
+  /** Contexto para resolução de campos AUTOMATICO a partir de uma submissão. */
+  private async contextoAutomatico(submissaoId: string) {
+    const sub = await this.prisma.submissao.findUniqueOrThrow({
+      where: { id: submissaoId },
+      include: {
+        municipio: { select: { nome: true } },
+        autor: { select: { nome: true } },
+        competencia: { select: { nome: true } },
+      },
+    });
+    return {
+      municipioId: sub.municipioId,
+      municipioNome: sub.municipio.nome,
+      autorNome: sub.autor.nome,
+      competenciaNome: sub.competencia.nome,
+    };
+  }
+
+  /** Calcula os valores das perguntas AUTOMATICO da versão. */
+  private async resolverAutomaticos(
+    versaoId: string,
+    ctx: { municipioId: number; municipioNome: string; autorNome: string; competenciaNome: string; protocolo: string },
+  ): Promise<Record<string, unknown>> {
+    const perguntas = await this.prisma.pergunta.findMany({
+      where: { secao: { versaoId }, tipo: TipoPergunta.AUTOMATICO },
+      select: { codigo: true, fonteAutomatica: true },
+    });
+
+    const agora = new Date();
+    const valores: Record<string, unknown> = {};
+    for (const p of perguntas) {
+      switch (p.fonteAutomatica) {
+        case FonteAutomatica.CODIGO_IBGE:
+          valores[p.codigo] = ctx.municipioId;
+          break;
+        case FonteAutomatica.MUNICIPIO_ATUAL:
+          valores[p.codigo] = ctx.municipioNome;
+          break;
+        case FonteAutomatica.USUARIO_ATUAL:
+          valores[p.codigo] = ctx.autorNome;
+          break;
+        case FonteAutomatica.DATA_ATUAL:
+          valores[p.codigo] = agora.toISOString().slice(0, 10);
+          break;
+        case FonteAutomatica.ANO_ATUAL:
+          valores[p.codigo] = agora.getFullYear();
+          break;
+        case FonteAutomatica.COMPETENCIA_ATUAL:
+          valores[p.codigo] = ctx.competenciaNome;
+          break;
+        case FonteAutomatica.PROTOCOLO:
+          valores[p.codigo] = ctx.protocolo;
+          break;
+        default:
+          break;
+      }
+    }
+    return valores;
   }
 
   private async gerarProtocolo(ufSigla: string, ano: number): Promise<string> {

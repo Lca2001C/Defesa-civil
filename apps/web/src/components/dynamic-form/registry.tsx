@@ -1,25 +1,35 @@
 import type { ComponentType } from "react";
-import { TipoCampo } from "@dcmg/contracts";
+import { TipoPergunta } from "@dcmg/contracts";
 import type { FieldProps } from "./types";
-import { CampoArquivo } from "./fields/CampoArquivo";
-import { CampoBooleano } from "./fields/CampoBooleano";
-import { CampoData } from "./fields/CampoData";
-import { CampoMultiselect } from "./fields/CampoMultiselect";
-import { CampoNumero } from "./fields/CampoNumero";
-import { CampoSelect } from "./fields/CampoSelect";
 import { CampoTexto } from "./fields/CampoTexto";
+import { CampoTextoLongo } from "./fields/CampoTextoLongo";
+import { CampoNumero } from "./fields/CampoNumero";
+import { CampoData } from "./fields/CampoData";
+import { CampoSelect } from "./fields/CampoSelect";
+import { CampoRadio } from "./fields/CampoRadio";
+import { CampoCheckbox } from "./fields/CampoCheckbox";
+import { CampoSimNao } from "./fields/CampoSimNao";
+import { CampoAutomatico } from "./fields/CampoAutomatico";
+import { CampoArquivo } from "./fields/CampoArquivo";
 
-/** Mapa de TipoCampo → componente MUI. */
-export const REGISTRY: Record<TipoCampo, ComponentType<FieldProps>> = {
-  [TipoCampo.TEXTO]: CampoTexto,
-  [TipoCampo.CPF]: CampoTexto,
-  [TipoCampo.CNPJ]: CampoTexto,
-  [TipoCampo.CEP]: CampoTexto,
-  [TipoCampo.NUMERO]: CampoNumero,
-  [TipoCampo.MOEDA]: CampoNumero,
-  [TipoCampo.DATA]: CampoData,
-  [TipoCampo.SELECT]: CampoSelect,
-  [TipoCampo.MULTISELECT]: CampoMultiselect,
-  [TipoCampo.BOOLEANO]: CampoBooleano,
-  [TipoCampo.ARQUIVO]: CampoArquivo,
+/** Mapa de TipoPergunta → componente MUI. */
+export const REGISTRY: Record<TipoPergunta, ComponentType<FieldProps>> = {
+  [TipoPergunta.TEXTO_CURTO]: CampoTexto,
+  [TipoPergunta.TEXTO_LONGO]: CampoTextoLongo,
+  [TipoPergunta.EMAIL]: CampoTexto,
+  [TipoPergunta.TELEFONE]: CampoTexto,
+  [TipoPergunta.CPF]: CampoTexto,
+  [TipoPergunta.CNPJ]: CampoTexto,
+  [TipoPergunta.CEP]: CampoTexto,
+  [TipoPergunta.URL]: CampoTexto,
+  [TipoPergunta.NUMERO]: CampoNumero,
+  [TipoPergunta.MOEDA]: CampoNumero,
+  [TipoPergunta.PORCENTAGEM]: CampoNumero,
+  [TipoPergunta.DATA]: CampoData,
+  [TipoPergunta.LISTA_SUSPENSA]: CampoSelect,
+  [TipoPergunta.RADIO]: CampoRadio,
+  [TipoPergunta.CHECKBOX]: CampoCheckbox,
+  [TipoPergunta.SIM_NAO]: CampoSimNao,
+  [TipoPergunta.UPLOAD]: CampoArquivo,
+  [TipoPergunta.AUTOMATICO]: CampoAutomatico,
 };

@@ -10,8 +10,7 @@ import { NOTIFICACOES_QUEUE } from './notificacoes.service';
 const ASSUNTOS: Record<NotificacaoPayload['tipo'], string> = {
   submissao_enviada: 'Submissão recebida — Defesa Civil MG',
   correcao_solicitada: 'Correção solicitada — Defesa Civil MG',
-  submissao_validada: 'Submissão validada — Defesa Civil MG',
-  submissao_rejeitada: 'Submissão rejeitada — Defesa Civil MG',
+  submissao_aprovada: 'Submissão aprovada — Defesa Civil MG',
 };
 
 const CORPO_HTML: Record<
@@ -27,13 +26,9 @@ const CORPO_HTML: Record<
      <p>Uma correção foi solicitada para a submissão <strong>${p.protocolo}</strong>.</p>
      ${p.observacao ? `<p>Observação: ${p.observacao}</p>` : ''}
      <p>Acesse o sistema para realizar os ajustes.</p>`,
-  submissao_validada: (p) =>
+  submissao_aprovada: (p) =>
     `<p>Olá, <strong>${p.nome}</strong>.</p>
-     <p>A submissão <strong>${p.protocolo}</strong> foi validada com sucesso.</p>`,
-  submissao_rejeitada: (p) =>
-    `<p>Olá, <strong>${p.nome}</strong>.</p>
-     <p>A submissão <strong>${p.protocolo}</strong> foi rejeitada.</p>
-     ${p.observacao ? `<p>Motivo: ${p.observacao}</p>` : ''}`,
+     <p>A submissão <strong>${p.protocolo}</strong> foi aprovada com sucesso.</p>`,
 };
 
 @Processor(NOTIFICACOES_QUEUE)

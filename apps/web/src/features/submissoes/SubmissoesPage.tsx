@@ -41,22 +41,20 @@ interface Listagem {
 
 const COR_STATUS: Record<string, "default" | "info" | "warning" | "success" | "error"> = {
   RASCUNHO: "default",
-  ENVIADA: "info",
-  EM_ANALISE: "warning",
+  EM_PREENCHIMENTO: "info",
+  ENVIADO: "info",
   CORRECAO_SOLICITADA: "error",
-  REVISADA: "warning",
-  VALIDADA: "success",
-  REJEITADA: "error",
+  REVISADO: "warning",
+  APROVADO: "success",
 };
 
 const LABEL_STATUS: Record<string, string> = {
   RASCUNHO: "Rascunho",
-  ENVIADA: "Enviada",
-  EM_ANALISE: "Em análise",
+  EM_PREENCHIMENTO: "Em preenchimento",
+  ENVIADO: "Enviado",
   CORRECAO_SOLICITADA: "Correção solicitada",
-  REVISADA: "Revisada",
-  VALIDADA: "Validada",
-  REJEITADA: "Rejeitada",
+  REVISADO: "Revisado",
+  APROVADO: "Aprovado",
 };
 
 export default function SubmissoesPage() {

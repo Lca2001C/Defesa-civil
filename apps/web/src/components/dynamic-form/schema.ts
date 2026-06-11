@@ -1,59 +1,141 @@
 // Gerador de schema Zod a partir de um SchemaFormulario (run-time).
-// Usado pelo DynamicForm para validacao automatica com React Hook Form.
+// Usado pelo DynamicForm para validação automática com React Hook Form.
 
 import { z } from "zod";
-import { TipoCampo, type CampoFormulario, type SchemaFormulario } from "@dcmg/contracts";
+import {
+  AcaoCondicional,
+  OperadorCondicional,
+  TipoPergunta,
+  type Pergunta,
+  type SchemaFormulario,
+} from "@dcmg/contracts";
+import { cpfValido } from "./masks";
 
-function validadorCampo(campo: CampoFormulario): z.ZodTypeAny {
+function soDigitos(v: unknown): string {
+  return String(v ?? "").replace(/\D/g, "");
+}
+
+function validadorCampo(campo: Pergunta): z.ZodTypeAny {
   const { tipo, obrigatorio, validacoes } = campo;
-
   let base: z.ZodTypeAny;
 
   switch (tipo) {
-    case TipoCampo.TEXTO:
-    case TipoCampo.CPF:
-    case TipoCampo.CNPJ:
-    case TipoCampo.CEP: {
+    case TipoPergunta.TEXTO_CURTO:
+    case TipoPergunta.TEXTO_LONGO: {
       let s = z.string();
       if (validacoes?.min) s = s.min(validacoes.min, validacoes.mensagem ?? undefined);
       if (validacoes?.max) s = s.max(validacoes.max, validacoes.mensagem ?? undefined);
-      if (validacoes?.padrao) {
-        s = s.regex(new RegExp(validacoes.padrao), validacoes.mensagem ?? undefined);
-      }
+      if (validacoes?.padrao) s = s.regex(new RegExp(validacoes.padrao), validacoes.mensagem ?? undefined);
       base = obrigatorio ? s.min(1, "Campo obrigatório.") : s.optional().or(z.literal(""));
       break;
     }
 
-    case TipoCampo.NUMERO:
-    case TipoCampo.MOEDA: {
+    case TipoPergunta.EMAIL:
+      base = obrigatorio
+        ? z.string().min(1, "Campo obrigatório.").email("E-mail inválido.")
+        : z.string().email("E-mail inválido.").optional().or(z.literal(""));
+      break;
+
+    case TipoPergunta.URL:
+      base = obrigatorio
+        ? z.string().min(1, "Campo obrigatório.").url("URL inválida.")
+        : z.string().url("URL inválida.").optional().or(z.literal(""));
+      break;
+
+    case TipoPergunta.CPF:
+      base = z
+        .string()
+        .optional()
+        .superRefine((v, ctx) => {
+          if (!v) {
+            if (obrigatorio) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Campo obrigatório." });
+            return;
+          }
+          if (!cpfValido(v)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "CPF inválido." });
+        });
+      break;
+
+    case TipoPergunta.CNPJ:
+      base = z
+        .string()
+        .optional()
+        .superRefine((v, ctx) => {
+          if (!v) {
+            if (obrigatorio) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Campo obrigatório." });
+            return;
+          }
+          if (soDigitos(v).length !== 14) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "CNPJ deve ter 14 dígitos." });
+        });
+      break;
+
+    case TipoPergunta.CEP:
+      base = z
+        .string()
+        .optional()
+        .superRefine((v, ctx) => {
+          if (!v) {
+            if (obrigatorio) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Campo obrigatório." });
+            return;
+          }
+          if (soDigitos(v).length !== 8) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "CEP deve ter 8 dígitos." });
+        });
+      break;
+
+    case TipoPergunta.TELEFONE:
+      base = z
+        .string()
+        .optional()
+        .superRefine((v, ctx) => {
+          if (!v) {
+            if (obrigatorio) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Campo obrigatório." });
+            return;
+          }
+          const n = soDigitos(v).length;
+          if (n < 10 || n > 11) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Telefone inválido." });
+        });
+      break;
+
+    case TipoPergunta.NUMERO:
+    case TipoPergunta.MOEDA:
+    case TipoPergunta.PORCENTAGEM: {
       let n = z.coerce.number({ invalid_type_error: "Informe um número válido." });
-      if (validacoes?.min !== undefined) n = n.min(validacoes.min);
-      if (validacoes?.max !== undefined) n = n.max(validacoes.max);
+      const minPad = tipo === TipoPergunta.PORCENTAGEM ? 0 : undefined;
+      const maxPad = tipo === TipoPergunta.PORCENTAGEM ? 100 : undefined;
+      const min = validacoes?.min ?? minPad;
+      const max = validacoes?.max ?? maxPad;
+      if (min !== undefined) n = n.min(min);
+      if (max !== undefined) n = n.max(max);
       base = obrigatorio ? n : n.optional();
       break;
     }
 
-    case TipoCampo.DATA:
+    case TipoPergunta.DATA:
       base = obrigatorio
         ? z.string().min(1, "Campo obrigatório.")
         : z.string().optional().or(z.literal(""));
       break;
 
-    case TipoCampo.SELECT:
+    case TipoPergunta.LISTA_SUSPENSA:
+    case TipoPergunta.RADIO:
       base = obrigatorio
         ? z.string().min(1, "Selecione uma opção.")
         : z.string().optional();
       break;
 
-    case TipoCampo.MULTISELECT:
-      base = z.array(z.string()).default([]);
+    case TipoPergunta.CHECKBOX:
+      base = obrigatorio
+        ? z.array(z.string()).min(1, "Selecione ao menos uma opção.")
+        : z.array(z.string()).default([]);
       break;
 
-    case TipoCampo.BOOLEANO:
-      base = z.boolean().default(false);
+    case TipoPergunta.SIM_NAO:
+      base = obrigatorio
+        ? z.boolean({ invalid_type_error: "Selecione Sim ou Não." })
+        : z.boolean().optional();
       break;
 
-    case TipoCampo.ARQUIVO:
+    case TipoPergunta.UPLOAD:
+    case TipoPergunta.AUTOMATICO:
       base = z.any().optional();
       break;
 
@@ -64,44 +146,64 @@ function validadorCampo(campo: CampoFormulario): z.ZodTypeAny {
   return base;
 }
 
-/** Retorna um z.object com um validador por campo do schema. */
+/** Retorna um z.object com um validador por pergunta do schema. */
 export function gerarSchemaZod(schema: SchemaFormulario): z.ZodObject<z.ZodRawShape> {
   const shape: z.ZodRawShape = {};
   for (const secao of schema.secoes) {
-    for (const campo of secao.campos) {
-      shape[campo.chave] = validadorCampo(campo);
+    for (const campo of secao.perguntas) {
+      // Campos AUTOMATICO são preenchidos pelo servidor; não validar no cliente.
+      if (campo.tipo === TipoPergunta.AUTOMATICO) {
+        shape[campo.codigo] = z.any().optional();
+        continue;
+      }
+      shape[campo.codigo] = validadorCampo(campo);
     }
   }
   return z.object(shape);
 }
 
-/** Valores iniciais em branco para todos os campos do schema. */
+/** Valores iniciais em branco para todas as perguntas do schema. */
 export function construirDefaultValues(schema: SchemaFormulario): Record<string, unknown> {
   const valores: Record<string, unknown> = {};
   for (const secao of schema.secoes) {
-    for (const campo of secao.campos) {
+    for (const campo of secao.perguntas) {
       switch (campo.tipo) {
-        case TipoCampo.MULTISELECT:
-          valores[campo.chave] = [];
+        case TipoPergunta.CHECKBOX:
+          valores[campo.codigo] = [];
           break;
-        case TipoCampo.BOOLEANO:
-          valores[campo.chave] = false;
+        case TipoPergunta.SIM_NAO:
+          valores[campo.codigo] = undefined;
           break;
         default:
-          valores[campo.chave] = "";
+          valores[campo.codigo] = "";
       }
     }
   }
   return valores;
 }
 
-/** Avalia se um campo deve ser exibido (logica condicional simples). */
+/** Avalia se uma pergunta deve ser exibida (lógica condicional). */
 export function campoVisivel(
-  campo: CampoFormulario,
+  campo: Pergunta,
   valores: Record<string, unknown>,
 ): boolean {
-  if (!campo.condicional) return true;
-  const { campo: chave, igualA } = campo.condicional;
-  const valor = valores[chave];
-  return Array.isArray(igualA) ? igualA.includes(valor as never) : valor === igualA;
+  if (!campo.regras || campo.regras.length === 0) return true;
+
+  // Todas as regras precisam ser satisfeitas para a ação resultante.
+  for (const regra of campo.regras) {
+    const valorOrigem = valores[regra.origemCodigo];
+    const igual = comparar(valorOrigem, regra.valor);
+    const satisfaz = regra.operador === OperadorCondicional.IGUAL ? igual : !igual;
+    if (satisfaz) {
+      return regra.acao === AcaoCondicional.MOSTRAR;
+    }
+  }
+  // Nenhuma regra satisfeita: comportamento inverso da primeira ação.
+  return campo.regras[0]!.acao !== AcaoCondicional.MOSTRAR;
+}
+
+function comparar(valor: unknown, alvo: string): boolean {
+  if (typeof valor === "boolean") return String(valor) === alvo;
+  if (Array.isArray(valor)) return valor.map(String).includes(alvo);
+  return String(valor ?? "") === alvo;
 }

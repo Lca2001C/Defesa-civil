@@ -1,124 +1,154 @@
 /**
- * Motor de formularios — contrato central.
+ * Motor de formularios — contrato central (construtor visual).
  *
- * Define os tipos de campo suportados e a estrutura declarativa de um
- * formulario (campos, secoes e schema versionado). Esse contrato e
- * compartilhado entre o backend (validacao/persistencia) e o frontend
- * (renderizacao dinamica do formulario).
+ * Define os tipos de pergunta suportados e a estrutura declarativa de um
+ * formulario (perguntas, secoes, opcoes e regras condicionais). No banco a
+ * estrutura e NORMALIZADA (tabelas Secao/Pergunta/OpcaoPergunta/RegraCondicional);
+ * este contrato e a PROJECAO JSON usada no transporte, compartilhada entre o
+ * construtor (edicao), o renderizador (preenchimento) e a validacao.
  */
 
 /**
- * Tipos de campo suportados pelo motor de formularios.
+ * Tipos de pergunta suportados pelo construtor visual.
  */
-export enum TipoCampo {
-  /** Texto livre. */
-  TEXTO = 'TEXTO',
-  /** Numero (inteiro ou decimal). */
+export enum TipoPergunta {
+  TEXTO_CURTO = 'TEXTO_CURTO',
+  TEXTO_LONGO = 'TEXTO_LONGO',
   NUMERO = 'NUMERO',
-  /** Data. */
   DATA = 'DATA',
-  /** Selecao unica a partir de opcoes. */
-  SELECT = 'SELECT',
-  /** Selecao multipla a partir de opcoes. */
-  MULTISELECT = 'MULTISELECT',
-  /** Valor logico (sim/nao). */
-  BOOLEANO = 'BOOLEANO',
-  /** CPF (com validacao de digitos verificadores). */
+  EMAIL = 'EMAIL',
+  TELEFONE = 'TELEFONE',
   CPF = 'CPF',
-  /** CNPJ (com validacao de digitos verificadores). */
   CNPJ = 'CNPJ',
-  /** CEP. */
   CEP = 'CEP',
-  /** Valor monetario (BRL). */
   MOEDA = 'MOEDA',
-  /** Anexo de arquivo. */
-  ARQUIVO = 'ARQUIVO',
+  PORCENTAGEM = 'PORCENTAGEM',
+  SIM_NAO = 'SIM_NAO',
+  LISTA_SUSPENSA = 'LISTA_SUSPENSA',
+  RADIO = 'RADIO',
+  CHECKBOX = 'CHECKBOX',
+  UPLOAD = 'UPLOAD',
+  URL = 'URL',
+  AUTOMATICO = 'AUTOMATICO',
 }
 
 /**
- * Opcao de um campo do tipo SELECT ou MULTISELECT.
+ * Fonte de preenchimento de uma pergunta AUTOMATICO (resolvida no servidor).
  */
-export interface OpcaoCampo {
+export enum FonteAutomatica {
+  CODIGO_IBGE = 'CODIGO_IBGE',
+  MUNICIPIO_ATUAL = 'MUNICIPIO_ATUAL',
+  USUARIO_ATUAL = 'USUARIO_ATUAL',
+  DATA_ATUAL = 'DATA_ATUAL',
+  ANO_ATUAL = 'ANO_ATUAL',
+  COMPETENCIA_ATUAL = 'COMPETENCIA_ATUAL',
+  PROTOCOLO = 'PROTOCOLO',
+}
+
+/** Operador de comparacao de uma regra condicional. */
+export enum OperadorCondicional {
+  IGUAL = 'IGUAL',
+  DIFERENTE = 'DIFERENTE',
+}
+
+/** Acao aplicada a pergunta-alvo quando a condicao e satisfeita. */
+export enum AcaoCondicional {
+  MOSTRAR = 'MOSTRAR',
+  OCULTAR = 'OCULTAR',
+}
+
+/** Opcao de uma pergunta LISTA_SUSPENSA, RADIO ou CHECKBOX. */
+export interface OpcaoPergunta {
   /** Valor persistido. */
   valor: string;
   /** Texto exibido ao usuario. */
   rotulo: string;
+  /** Ordem de exibicao (opcional). */
+  ordem?: number;
 }
 
 /**
- * Regras de validacao aplicaveis a um campo. Todos os atributos sao
- * opcionais; cada tipo de campo utiliza apenas os relevantes.
+ * Regras de validacao de uma pergunta. Cada tipo usa apenas os campos relevantes.
  */
-export interface ValidacoesCampo {
-  /** Tamanho minimo (texto) ou valor minimo (numero/moeda). */
+export interface ValidacoesPergunta {
+  /** Tamanho minimo (texto) ou valor minimo (numero/moeda/porcentagem). */
   min?: number;
-  /** Tamanho maximo (texto) ou valor maximo (numero/moeda). */
+  /** Tamanho maximo (texto) ou valor maximo (numero/moeda/porcentagem). */
   max?: number;
   /** Expressao regular que o valor (texto) deve satisfazer. */
   padrao?: string;
-  /** Tipos de arquivo aceitos (MIME), para campos ARQUIVO. */
+  /** Tipos de arquivo aceitos (MIME/extensao), para UPLOAD. */
   tiposArquivo?: string[];
-  /** Tamanho maximo do arquivo em megabytes, para campos ARQUIVO. */
+  /** Tamanho maximo do arquivo em MB, para UPLOAD. */
   tamanhoMaximoMb?: number;
-  /** Mensagem de erro personalizada exibida quando a validacao falha. */
+  /** Mensagem de erro personalizada. */
   mensagem?: string;
 }
 
 /**
- * Condicao que torna um campo visivel/obrigatorio apenas quando outro
- * campo possui determinado valor (logica condicional simples).
+ * Regra condicional simples: quando a pergunta de `origemCodigo` satisfaz
+ * (operador, valor), aplica `acao` sobre a pergunta que declara a regra.
  */
-export interface CondicaoCampo {
-  /** Chave do campo de referencia. */
-  campo: string;
-  /** Valor (ou valores) que ativam a condicao. */
-  igualA: string | number | boolean | Array<string | number | boolean>;
+export interface RegraCondicional {
+  /** Codigo da pergunta de referencia (origem). */
+  origemCodigo: string;
+  /** Operador de comparacao. */
+  operador: OperadorCondicional;
+  /** Valor comparado (string; o renderizador coage conforme o tipo). */
+  valor: string;
+  /** Acao sobre a pergunta-alvo. */
+  acao: AcaoCondicional;
 }
 
 /**
- * Definicao de um campo do formulario.
+ * Definicao de uma pergunta do formulario.
  */
-export interface CampoFormulario {
-  /** Identificador estavel do campo dentro do schema. */
-  chave: string;
+export interface Pergunta {
+  /** Identificador no banco (presente apenas em schemas carregados). */
+  id?: string;
+  /** Identificador estavel dentro do schema (chave das respostas). */
+  codigo: string;
   /** Rotulo exibido ao usuario. */
   rotulo: string;
-  /** Tipo do campo. */
-  tipo: TipoCampo;
+  /** Tipo da pergunta. */
+  tipo: TipoPergunta;
   /** Indica se o preenchimento e obrigatorio. */
   obrigatorio: boolean;
-  /** Texto de ajuda/dica exibido junto ao campo. */
+  /** Texto de ajuda/dica. */
   ajuda?: string;
-  /** Regras de validacao adicionais. */
-  validacoes?: ValidacoesCampo;
-  /** Opcoes disponiveis (para SELECT/MULTISELECT). */
-  opcoes?: OpcaoCampo[];
-  /** Condicao que controla a exibicao do campo. */
-  condicional?: CondicaoCampo;
+  /** Ordem dentro da secao. */
+  ordem?: number;
+  /** Regras de validacao. */
+  validacoes?: ValidacoesPergunta;
+  /** Opcoes (LISTA_SUSPENSA/RADIO/CHECKBOX). */
+  opcoes?: OpcaoPergunta[];
+  /** Regras condicionais que controlam a exibicao desta pergunta. */
+  regras?: RegraCondicional[];
+  /** Fonte de preenchimento, para tipo AUTOMATICO. */
+  fonteAutomatica?: FonteAutomatica;
 }
 
 /**
- * Agrupamento logico de campos dentro do formulario.
+ * Secao (agrupamento de perguntas) do formulario.
  */
 export interface SecaoFormulario {
-  /** Identificador estavel da secao. */
-  chave: string;
+  /** Identificador no banco (presente apenas em schemas carregados). */
+  id?: string;
   /** Titulo da secao. */
   titulo: string;
-  /** Descricao opcional da secao. */
+  /** Descricao opcional. */
   descricao?: string;
-  /** Campos pertencentes a secao. */
-  campos: CampoFormulario[];
+  /** Ordem da secao. */
+  ordem?: number;
+  /** Perguntas pertencentes a secao. */
+  perguntas: Pergunta[];
 }
 
 /**
- * Schema completo e versionado de um formulario.
- *
- * E o documento que descreve, de forma declarativa, toda a estrutura do
- * formulario que sera renderizada e validada dinamicamente.
+ * Schema completo e versionado de um formulario (projecao JSON).
  */
 export interface SchemaFormulario {
-  /** Versao do schema (para versionamento e migracao de respostas). */
+  /** Numero da versao. */
   versao: number;
   /** Titulo do formulario. */
   titulo?: string;
@@ -126,4 +156,14 @@ export interface SchemaFormulario {
   descricao?: string;
   /** Secoes que compoem o formulario. */
   secoes: SecaoFormulario[];
+}
+
+/**
+ * Conteudo de um bloco reutilizavel: uma secao parcial (titulo + perguntas)
+ * que o construtor expande dentro de uma secao existente.
+ */
+export interface ConteudoBloco {
+  titulo?: string;
+  descricao?: string;
+  perguntas: Pergunta[];
 }

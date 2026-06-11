@@ -13,8 +13,6 @@ import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CompetenciasModule } from './modules/competencias/competencias.module';
 import { FormulariosModule } from './modules/formularios/formularios.module';
-import { ExcelModule } from './modules/excel/excel.module';
-import { ImportacaoModule } from './modules/importacao/importacao.module';
 import { SubmissoesModule } from './modules/submissoes/submissoes.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { PainelModule } from './modules/painel/painel.module';
@@ -62,8 +60,6 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     AuthModule,
     CompetenciasModule,
     FormulariosModule,
-    ExcelModule,
-    ImportacaoModule,
     SubmissoesModule,
     RealtimeModule,
     PainelModule,

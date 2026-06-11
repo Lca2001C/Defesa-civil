@@ -1,35 +1,42 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Alert,
   Box,
   Button,
   Card,
+  CardActionArea,
   CardContent,
-  Chip,
   CircularProgress,
+  Divider,
   FormControl,
   InputLabel,
   MenuItem,
   Select,
   Stack,
-  Step,
-  StepLabel,
-  Stepper,
   TextField,
   Typography,
 } from "@mui/material";
-import UploadFileIcon from "@mui/icons-material/UploadFile";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import NoteAddIcon from "@mui/icons-material/NoteAdd";
+import LibraryBooksIcon from "@mui/icons-material/LibraryBooks";
 import { api, ApiError } from "../../lib/api";
-import type { SchemaFormulario, SecaoFormulario } from "@dcmg/contracts";
 
-const PASSOS = ["Upload do Template", "Revisar e Configurar", "Confirmar"];
+interface CriacaoResp {
+  id: string;
+  versaoInicialId: string;
+}
+
+interface Template {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  categoria: string | null;
+}
 
 const CATEGORIAS = [
-  "Avaliação de Danos",
+  "Diagnóstico",
   "Levantamento de Risco",
   "Monitoramento",
   "Relatório de Ocorrência",
@@ -38,257 +45,149 @@ const CATEGORIAS = [
 
 export default function FormularioNovo() {
   const navigate = useNavigate();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [passo, setPasso] = useState(0);
-  const [arquivo, setArquivo] = useState<File | null>(null);
-  const [schema, setSchema] = useState<SchemaFormulario | null>(null);
+  const [modo, setModo] = useState<"escolha" | "branco">("escolha");
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
   const [erro, setErro] = useState<string | null>(null);
 
-  // Step 0 → parse do template Excel
-  const parseMutation = useMutation({
-    mutationFn: (file: File) => {
-      const fd = new FormData();
-      fd.append("arquivo", file);
-      return api.post<SchemaFormulario>("/excel/parse-template", fd);
-    },
-    onSuccess: (data) => {
-      setSchema(data);
-      setErro(null);
-      setPasso(1);
-    },
-    onError: (e) => {
-      setErro(e instanceof ApiError ? e.message : "Erro ao processar a planilha.");
-    },
+  const { data: templates } = useQuery({
+    queryKey: ["templates"],
+    queryFn: () => api.get<Template[]>("/formularios/templates"),
   });
 
-  // Step 2 → criar formulário
-  const criarMutation = useMutation({
-    mutationFn: () =>
-      api.post<{ id: string }>("/formularios", { nome, descricao, categoria, schema }),
-    onSuccess: (data) => {
-      setPasso(2);
-      setTimeout(() => navigate(`/formularios/${data.id}`), 1800);
-    },
-    onError: (e) => {
-      setErro(e instanceof ApiError ? e.message : "Erro ao criar o formulário.");
-    },
-  });
-
-  function handleArquivo(files: FileList | null) {
-    const file = files?.[0];
-    if (!file) return;
-    if (
-      !file.name.endsWith(".xlsx") &&
-      !file.name.endsWith(".xls")
-    ) {
-      setErro("Selecione um arquivo .xlsx ou .xls.");
-      return;
-    }
-    setErro(null);
-    setArquivo(file);
-    parseMutation.mutate(file);
+  function irParaEditor(resp: CriacaoResp) {
+    navigate(`/formularios/${resp.id}/versoes/${resp.versaoInicialId}/editar`);
   }
 
-  const camposTotais = schema
-    ? (schema.secoes as SecaoFormulario[]).reduce(
-        (acc, s) => acc + (s.campos?.length ?? 0),
-        0,
-      )
-    : 0;
+  const criarBranco = useMutation({
+    mutationFn: () => api.post<CriacaoResp>("/formularios", { nome, descricao, categoria }),
+    onSuccess: irParaEditor,
+    onError: (e) => setErro(e instanceof ApiError ? e.message : "Erro ao criar o formulário."),
+  });
+
+  const criarDeTemplate = useMutation({
+    mutationFn: (templateId: string) => api.post<CriacaoResp>(`/formularios/from-template/${templateId}`),
+    onSuccess: irParaEditor,
+    onError: (e) => setErro(e instanceof ApiError ? e.message : "Erro ao criar a partir do template."),
+  });
 
   return (
-    <Stack spacing={3}>
-      <Stack direction="row" alignItems="center" spacing={2}>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          onClick={() => navigate("/formularios")}
-          variant="text"
-        >
-          Formulários
-        </Button>
-        <Typography variant="h5">Novo Formulário</Typography>
-      </Stack>
+    <Box>
+      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate("/formularios")} sx={{ mb: 2 }}>
+        Voltar
+      </Button>
+      <Typography variant="h5" sx={{ mb: 3 }}>
+        Novo formulário
+      </Typography>
 
-      <Stepper activeStep={passo} sx={{ maxWidth: 600 }}>
-        {PASSOS.map((label) => (
-          <Step key={label}>
-            <StepLabel>{label}</StepLabel>
-          </Step>
-        ))}
-      </Stepper>
+      {erro && <Alert severity="error" sx={{ mb: 2 }}>{erro}</Alert>}
 
-      {erro && <Alert severity="error">{erro}</Alert>}
-
-      {/* ── Passo 0: Upload ── */}
-      {passo === 0 && (
-        <Card>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Faça upload da planilha template
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              A estrutura do formulário (campos, seções, tipos de dados) será detectada
-              automaticamente a partir dos cabeçalhos e da aba de definição da planilha.
-            </Typography>
-
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              style={{ display: "none" }}
-              onChange={(e) => handleArquivo(e.target.files)}
-            />
-
-            <Box
-              onClick={() => inputRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                handleArquivo(e.dataTransfer.files);
-              }}
-              sx={{
-                border: "2px dashed",
-                borderColor: "divider",
-                borderRadius: 2,
-                p: 6,
-                textAlign: "center",
-                cursor: "pointer",
-                "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" },
-              }}
-            >
-              {parseMutation.isPending ? (
-                <Stack alignItems="center" spacing={1}>
-                  <CircularProgress size={36} />
+      {modo === "escolha" && (
+        <Stack spacing={3}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+            <Card sx={{ flex: 1 }}>
+              <CardActionArea onClick={() => setModo("branco")} sx={{ p: 2, height: "100%" }}>
+                <CardContent>
+                  <NoteAddIcon sx={{ fontSize: 40, color: "primary.main", mb: 1 }} />
+                  <Typography variant="h6">Criar em branco</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Processando planilha...
+                    Monte o formulário do zero no construtor visual.
                   </Typography>
-                </Stack>
-              ) : (
-                <Stack alignItems="center" spacing={1}>
-                  <UploadFileIcon sx={{ fontSize: 48, color: "text.secondary" }} />
-                  <Typography variant="body1">
-                    {arquivo ? arquivo.name : "Arraste ou clique para selecionar"}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Aceita .xlsx e .xls
-                  </Typography>
-                </Stack>
-              )}
-            </Box>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Passo 1: Revisar + Configurar ── */}
-      {passo === 1 && schema && (
-        <Stack spacing={2}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                Schema detectado — {schema.secoes.length} seção
-                {schema.secoes.length !== 1 ? "ões" : ""} · {camposTotais} campo
-                {camposTotais !== 1 ? "s" : ""}
-              </Typography>
-              <Stack spacing={1}>
-                {(schema.secoes as SecaoFormulario[]).map((secao, i) => (
-                  <Box key={i}>
-                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                      {secao.titulo}
-                    </Typography>
-                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                      {secao.campos?.map((campo, cIdx) => (
-                        <Chip
-                          key={`${i}_${cIdx}_${campo.chave}`}
-                          label={`${campo.rotulo} (${campo.tipo})`}
-                          size="small"
-                          variant={campo.obrigatorio ? "filled" : "outlined"}
-                          color={campo.obrigatorio ? "primary" : "default"}
-                        />
-                      ))}
-                    </Stack>
-                  </Box>
-                ))}
-              </Stack>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                Configurar o Formulário
-              </Typography>
-              <Stack spacing={2} sx={{ maxWidth: 480 }}>
-                <TextField
-                  label="Nome do formulário"
-                  fullWidth
-                  size="small"
-                  required
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  placeholder="Ex.: Levantamento de Danos — 2026"
-                />
-                <TextField
-                  label="Descrição"
-                  fullWidth
-                  size="small"
-                  multiline
-                  rows={2}
-                  value={descricao}
-                  onChange={(e) => setDescricao(e.target.value)}
-                />
-                <FormControl fullWidth size="small">
-                  <InputLabel>Categoria</InputLabel>
-                  <Select
-                    label="Categoria"
-                    value={categoria}
-                    onChange={(e) => setCategoria(e.target.value)}
-                  >
-                    {CATEGORIAS.map((c) => (
-                      <MenuItem key={c} value={c}>
-                        {c}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Stack>
-            </CardContent>
-          </Card>
-
-          <Stack direction="row" spacing={2}>
-            <Button onClick={() => setPasso(0)} variant="outlined">
-              Voltar
-            </Button>
-            <Button
-              variant="contained"
-              disabled={!nome || criarMutation.isPending}
-              onClick={() => criarMutation.mutate()}
-              startIcon={
-                criarMutation.isPending ? (
-                  <CircularProgress size={16} color="inherit" />
-                ) : undefined
-              }
-            >
-              Criar Formulário
-            </Button>
+                </CardContent>
+              </CardActionArea>
+            </Card>
+            <Card sx={{ flex: 1 }}>
+              <CardContent>
+                <LibraryBooksIcon sx={{ fontSize: 40, color: "primary.main", mb: 1 }} />
+                <Typography variant="h6">A partir de um template</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Comece de um modelo pronto e ajuste no construtor.
+                </Typography>
+              </CardContent>
+            </Card>
           </Stack>
+
+          <Box>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              Templates disponíveis
+            </Typography>
+            <Stack spacing={1}>
+              {templates?.map((t) => (
+                <Card key={t.id} variant="outlined">
+                  <CardActionArea
+                    onClick={() => criarDeTemplate.mutate(t.id)}
+                    disabled={criarDeTemplate.isPending}
+                  >
+                    <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <Box>
+                        <Typography variant="subtitle2">{t.nome}</Typography>
+                        {t.descricao && (
+                          <Typography variant="body2" color="text.secondary">
+                            {t.descricao}
+                          </Typography>
+                        )}
+                      </Box>
+                      {criarDeTemplate.isPending && <CircularProgress size={18} />}
+                    </CardContent>
+                  </CardActionArea>
+                </Card>
+              ))}
+              {templates?.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  Nenhum template cadastrado.
+                </Typography>
+              )}
+            </Stack>
+          </Box>
         </Stack>
       )}
 
-      {/* ── Passo 2: Sucesso ── */}
-      {passo === 2 && (
-        <Card>
-          <CardContent sx={{ textAlign: "center", py: 6 }}>
-            <CheckCircleIcon sx={{ fontSize: 56, color: "success.main", mb: 2 }} />
-            <Typography variant="h6">Formulário criado com sucesso!</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Redirecionando para a página do formulário...
+      {modo === "branco" && (
+        <Card sx={{ maxWidth: 560 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Dados do formulário
             </Typography>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField label="Nome" value={nome} onChange={(e) => setNome(e.target.value)} fullWidth size="small" required />
+              <TextField
+                label="Descrição"
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                fullWidth
+                size="small"
+                multiline
+                minRows={2}
+              />
+              <FormControl fullWidth size="small">
+                <InputLabel>Categoria</InputLabel>
+                <Select label="Categoria" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+                  {CATEGORIAS.map((c) => (
+                    <MenuItem key={c} value={c}>
+                      {c}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Divider />
+              <Stack direction="row" spacing={1}>
+                <Button onClick={() => setModo("escolha")} variant="outlined">
+                  Voltar
+                </Button>
+                <Button
+                  variant="contained"
+                  disabled={!nome || criarBranco.isPending}
+                  onClick={() => criarBranco.mutate()}
+                  startIcon={criarBranco.isPending ? <CircularProgress size={16} color="inherit" /> : undefined}
+                >
+                  Criar e abrir construtor
+                </Button>
+              </Stack>
+            </Stack>
           </CardContent>
         </Card>
       )}
-    </Stack>
+    </Box>
   );
 }

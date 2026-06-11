@@ -46,14 +46,14 @@ export function DynamicForm({ schema, onSubmit, carregando = false, preview = fa
       onSubmit={form.handleSubmit(handleSubmit)}
       noValidate
     >
-      {schema.secoes.map((secao) => {
-        const camposVisiveis = secao.campos.filter((c) =>
+      {schema.secoes.map((secao, si) => {
+        const camposVisiveis = secao.perguntas.filter((c) =>
           campoVisivel(c, valores),
         );
         if (camposVisiveis.length === 0) return null;
 
         return (
-          <Box key={secao.chave} sx={{ mb: 4 }}>
+          <Box key={secao.id ?? si} sx={{ mb: 4 }}>
             <Typography variant="h6" gutterBottom>
               {secao.titulo}
             </Typography>
@@ -68,9 +68,9 @@ export function DynamicForm({ schema, onSubmit, carregando = false, preview = fa
               {camposVisiveis.map((campo) => {
                 const Componente = REGISTRY[campo.tipo];
                 return (
-                  <Grid key={campo.chave} item xs={12} sm={6}>
+                  <Grid key={campo.codigo} item xs={12} sm={6}>
                     <Controller
-                      name={campo.chave}
+                      name={campo.codigo}
                       control={form.control}
                       render={({ field, fieldState }) => (
                         <Componente

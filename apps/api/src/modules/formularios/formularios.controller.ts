@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
@@ -25,7 +26,7 @@ export class FormulariosController {
 
   @Post()
   @Permissao('formularios.criar')
-  @ApiOperation({ summary: 'Cria um novo formulário (metadados).' })
+  @ApiOperation({ summary: 'Cria um novo formulário (metadados + schema opcional na v1).' })
   criar(@Body() dto: CriarFormularioDto) {
     return this.service.criar(dto);
   }
@@ -33,22 +34,38 @@ export class FormulariosController {
   @Get()
   @ApiOperation({ summary: 'Lista formulários com paginação.' })
   @ApiQuery({ name: 'status', required: false, enum: FormularioStatus })
-  buscarTodos(
-    @Query() paginacao: PaginacaoDto,
-    @Query('status') status?: FormularioStatus,
-  ) {
+  buscarTodos(@Query() paginacao: PaginacaoDto, @Query('status') status?: FormularioStatus) {
     return this.service.buscarTodos(paginacao, { status });
   }
 
-  /** Versões publicadas de todos os formulários — usado no wizard de submissão/importação. */
+  /** Versões publicadas de todos os formulários — usado no wizard de submissão. */
   @Get('versoes/publicadas')
   @ApiOperation({ summary: 'Lista todas as versões publicadas (para selects).' })
   versaoPublicadas() {
     return this.service.listarVersoesPublicadas();
   }
 
+  @Get('templates')
+  @ApiOperation({ summary: 'Lista os templates de formulário disponíveis.' })
+  listarTemplates() {
+    return this.service.listarTemplates();
+  }
+
+  @Post('from-template/:templateId')
+  @Permissao('formularios.criar')
+  @ApiOperation({ summary: 'Cria um formulário (rascunho) a partir de um template.' })
+  criarDeTemplate(@Param('templateId') templateId: string) {
+    return this.service.criarDeTemplate(templateId);
+  }
+
+  @Get('blocos')
+  @ApiOperation({ summary: 'Lista os blocos reutilizáveis (para o construtor).' })
+  listarBlocos() {
+    return this.service.listarBlocos();
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: 'Retorna um formulário com todas as suas versões.' })
+  @ApiOperation({ summary: 'Retorna um formulário e o resumo de suas versões.' })
   buscarPorId(@Param('id') id: string) {
     return this.service.buscarPorId(id);
   }
@@ -62,22 +79,33 @@ export class FormulariosController {
 
   @Post(':id/versoes')
   @Permissao('formularios.criar')
-  @ApiOperation({ summary: 'Cria uma nova versão (rascunho) do formulário com o schema JSONB.' })
+  @ApiOperation({ summary: 'Cria uma nova versão (rascunho) a partir de um schema.' })
   criarVersao(@Param('id') id: string, @Body() dto: CriarVersaoDto) {
     return this.service.criarVersao(id, dto);
   }
 
   @Get(':id/versoes/:versaoId')
-  @ApiOperation({ summary: 'Retorna o schema completo de uma versão específica.' })
+  @ApiOperation({ summary: 'Retorna o schema COMPOSTO de uma versão.' })
   buscarVersao(@Param('id') id: string, @Param('versaoId') versaoId: string) {
     return this.service.buscarVersao(id, versaoId);
   }
 
+  @Put(':id/versoes/:versaoId')
+  @Permissao('formularios.criar')
+  @ApiOperation({
+    summary: 'Salva o schema editado na versão (cria nova versão se publicada com submissões).',
+  })
+  salvarVersao(
+    @Param('id') id: string,
+    @Param('versaoId') versaoId: string,
+    @Body() dto: CriarVersaoDto,
+  ) {
+    return this.service.salvarVersao(id, versaoId, dto);
+  }
+
   @Patch(':id/versoes/:versaoId/publicar')
   @Permissao('formularios.publicar')
-  @ApiOperation({
-    summary: 'Publica uma versão vinculando-a a uma competência ABERTA.',
-  })
+  @ApiOperation({ summary: 'Publica uma versão vinculando-a a uma competência ABERTA.' })
   publicarVersao(
     @Param('id') id: string,
     @Param('versaoId') versaoId: string,
