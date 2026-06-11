@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import type { Env } from './config/env.validation';
 import { PrismaService } from './infra/prisma/prisma.service';
+import { WsRedisAdapter } from './infra/realtime/ws-redis.adapter';
 
 /**
  * Bootstrap da API NestJS da Plataforma Defesa Civil MG.
@@ -49,6 +50,14 @@ async function bootstrap(): Promise<void> {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+
+  // WebSocket adapter (com Redis se WS_REDIS_ADAPTER=true)
+  const wsAdapter = new WsRedisAdapter(app);
+  if (config.get('WS_REDIS_ADAPTER', { infer: true })) {
+    const redisUrl = config.get('REDIS_URL', { infer: true });
+    await wsAdapter.conectarRedis(redisUrl);
+  }
+  app.useWebSocketAdapter(wsAdapter);
 
   // Encerramento gracioso da conexao com o banco.
   app.enableShutdownHooks();

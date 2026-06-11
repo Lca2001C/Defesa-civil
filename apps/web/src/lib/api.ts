@@ -2,7 +2,7 @@
 // A baseUrl e RELATIVA (vinda do runtimeConfig), portanto a SPA sempre usa a
 // mesma origem (Nginx faz o proxy reverso para a API). Nenhuma URL fixa.
 
-import { getAccessToken } from "./auth";
+import { getAccessToken, getRefreshToken, setTokens, clearTokens } from "./auth";
 import { runtimeConfig } from "./runtimeConfig";
 
 /** Erro de requisicao com status HTTP e corpo bruto da resposta. */
@@ -23,17 +23,49 @@ function montarUrl(path: string): string {
   return `${base}${caminho}`;
 }
 
+// Flag para evitar loop de refresh concorrente.
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tentarRefresh(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) return false;
+    try {
+      const resp = await fetch(montarUrl("/auth/refresh"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!resp.ok) return false;
+      const dados = await resp.json() as { accessToken: string; refreshToken: string };
+      setTokens(dados.accessToken, dados.refreshToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 async function requisitar<T>(
   method: string,
   path: string,
   body?: unknown,
   init?: RequestInit,
+  _tentativa = 0,
 ): Promise<T> {
   const temCorpo = body !== undefined;
+  const isFormData = body instanceof FormData;
   const token = getAccessToken();
 
   const cabecalhos: Record<string, string> = { Accept: "application/json" };
-  if (temCorpo) cabecalhos["Content-Type"] = "application/json";
+  // Não definir Content-Type para FormData: o browser adiciona o boundary automaticamente.
+  if (temCorpo && !isFormData) cabecalhos["Content-Type"] = "application/json";
   if (token) cabecalhos["Authorization"] = `Bearer ${token}`;
   if (init?.headers) {
     const extra = new Headers(init.headers as HeadersInit);
@@ -43,9 +75,21 @@ async function requisitar<T>(
   const resposta = await fetch(montarUrl(path), {
     method,
     headers: cabecalhos,
-    body: temCorpo ? JSON.stringify(body) : undefined,
+    body: isFormData ? body : temCorpo ? JSON.stringify(body) : undefined,
     ...init,
   });
+
+  // Tentativa silenciosa de refresh ao receber 401 (access token expirado).
+  if (resposta.status === 401 && _tentativa === 0) {
+    const renovado = await tentarRefresh();
+    if (renovado) {
+      return requisitar<T>(method, path, body, init, 1);
+    }
+    // Refresh falhou: encerra sessao.
+    clearTokens();
+    window.dispatchEvent(new CustomEvent("auth:logout"));
+    throw new ApiError(401, "Sessão expirada. Faça login novamente.");
+  }
 
   const texto = await resposta.text();
   let dados: unknown = undefined;
@@ -55,11 +99,6 @@ async function requisitar<T>(
     } catch {
       dados = texto;
     }
-  }
-
-  // Token expirado ou invalido: notifica o AuthProvider para limpar sessao.
-  if (resposta.status === 401) {
-    window.dispatchEvent(new CustomEvent("auth:logout"));
   }
 
   if (!resposta.ok) {

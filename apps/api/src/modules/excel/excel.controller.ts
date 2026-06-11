@@ -10,6 +10,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Express } from 'express';
+import { memoryStorage } from 'multer';
 import { ExcelParserService } from './excel-parser.service';
 import { Permissao } from '../../common/decorators/permissao.decorator';
 
@@ -25,7 +26,7 @@ export class ExcelController {
   @Post('parse-template')
   @HttpCode(HttpStatus.OK)
   @Permissao('formularios.criar')
-  @UseInterceptors(FileInterceptor('arquivo'))
+  @UseInterceptors(FileInterceptor('arquivo', { storage: memoryStorage() }))
   @ApiOperation({ summary: 'Fluxo A — planilha → SchemaFormulario (rascunho)' })
   @ApiConsumes('multipart/form-data')
   async parsearTemplate(

@@ -1,32 +1,34 @@
-// Stub do cliente socket.io para o painel em tempo real.
-// A conexao usa a MESMA origem (caminho relativo) e o path vem do runtimeConfig,
-// preservando o principio "build once, deploy anywhere". A criacao e lazy: o
-// socket so e instanciado quando getSocket() e chamado pela primeira vez.
-
 import { io, type Socket } from "socket.io-client";
 import { runtimeConfig } from "./runtimeConfig";
+import { getAccessToken } from "./auth";
 
-let socket: Socket | null = null;
+let _painelSocket: Socket | null = null;
 
-/**
- * Retorna a instancia unica do socket, criando-a sob demanda.
- * Conecta na origem atual (window.location.origin) usando o path configurado.
- */
-export function getSocket(): Socket {
-  if (!socket) {
-    socket = io({
-      path: runtimeConfig.socketPath,
-      autoConnect: true,
-      transports: ["websocket"],
-    });
-  }
-  return socket;
+/** Retorna (ou cria) o socket para o namespace /painel, com auth JWT. */
+export function getPainelSocket(): Socket {
+  if (_painelSocket && _painelSocket.connected) return _painelSocket;
+
+  // Remove o sufixo /api para obter a origem base
+  const base = runtimeConfig.apiBaseUrl.replace(/\/api\/?$/, "") || "";
+  const token = getAccessToken() ?? "";
+
+  _painelSocket = io(`${base}/painel`, {
+    auth: { token },
+    path: runtimeConfig.socketPath,
+    transports: ["websocket"],
+    autoConnect: true,
+    reconnectionAttempts: 5,
+  });
+
+  return _painelSocket;
 }
 
-/** Encerra e descarta a conexao atual, se existir. */
+/** Retorna a instância legada (namespace raiz, sem auth). */
+export function getSocket(): Socket {
+  return getPainelSocket();
+}
+
 export function closeSocket(): void {
-  if (socket) {
-    socket.disconnect();
-    socket = null;
-  }
+  _painelSocket?.disconnect();
+  _painelSocket = null;
 }

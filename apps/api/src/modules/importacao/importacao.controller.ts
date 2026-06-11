@@ -11,6 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Express } from 'express';
 import { ImportacaoService } from './importacao.service';
@@ -28,7 +29,7 @@ export class ImportacaoController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Permissao('importacao.executar')
-  @UseInterceptors(FileInterceptor('arquivo'))
+  @UseInterceptors(FileInterceptor('arquivo', { storage: memoryStorage() }))
   @ApiOperation({ summary: 'Fluxo B — cria lote de importação a partir de planilha' })
   @ApiConsumes('multipart/form-data')
   async criar(

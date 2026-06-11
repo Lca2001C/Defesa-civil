@@ -4,14 +4,32 @@ import NotFoundPage from "./NotFoundPage";
 import ProtectedRoute from "./ProtectedRoute";
 import PainelPage from "../features/painel/PainelPage";
 import LoginPage from "../features/auth/LoginPage";
+import RecuperarSenhaPage from "../features/auth/RecuperarSenhaPage";
+import RedefinirSenhaPage from "../features/auth/RedefinirSenhaPage";
 import FormulariosPage from "../features/formularios/FormulariosPage";
 import FormularioDetalhe from "../features/formularios/FormularioDetalhe";
+import FormularioNovo from "../features/formularios/FormularioNovo";
 import ImportacaoPage from "../features/importacao/ImportacaoPage";
+import SubmissoesPage from "../features/submissoes/SubmissoesPage";
+import SubmissaoNova from "../features/submissoes/SubmissaoNova";
+import SubmissaoDetalhe from "../features/submissoes/SubmissaoDetalhe";
+import DashboardPage from "../features/dashboard/DashboardPage";
+import MunicipiosPage from "../features/municipios/MunicipiosPage";
+import MunicipioDetalhe from "../features/municipios/MunicipioDetalhe";
+import AdminPage from "../features/admin/AdminPage";
 
 export const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
+  },
+  {
+    path: "/recuperar-senha",
+    element: <RecuperarSenhaPage />,
+  },
+  {
+    path: "/redefinir-senha",
+    element: <RedefinirSenhaPage />,
   },
   {
     path: "/",
@@ -23,8 +41,16 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <PainelPage /> },
       { path: "formularios", element: <FormulariosPage /> },
+      { path: "formularios/novo", element: <FormularioNovo /> },
       { path: "formularios/:id", element: <FormularioDetalhe /> },
       { path: "importacao", element: <ImportacaoPage /> },
+      { path: "submissoes", element: <SubmissoesPage /> },
+      { path: "submissoes/nova", element: <SubmissaoNova /> },
+      { path: "submissoes/:id", element: <SubmissaoDetalhe /> },
+      { path: "dashboard", element: <DashboardPage /> },
+      { path: "municipios", element: <MunicipiosPage /> },
+      { path: "municipios/:id", element: <MunicipioDetalhe /> },
+      { path: "admin", element: <AdminPage /> },
     ],
   },
   {

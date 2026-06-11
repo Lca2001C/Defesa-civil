@@ -10,7 +10,9 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "dev": "pnpm -r --parallel dev",
+    "dev": "pnpm --filter @dcmg/contracts build && pnpm --parallel --filter @dcmg/api --filter @dcmg/web dev",
+    "dev:api": "pnpm --filter @dcmg/api dev",
+    "dev:web": "pnpm --filter @dcmg/web dev",
     "prisma:generate": "pnpm --filter @dcmg/api prisma:generate",
     "prisma:migrate": "pnpm --filter @dcmg/api prisma:migrate"
   }

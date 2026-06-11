@@ -40,6 +40,13 @@ export class FormulariosController {
     return this.service.buscarTodos(paginacao, { status });
   }
 
+  /** Versões publicadas de todos os formulários — usado no wizard de submissão/importação. */
+  @Get('versoes/publicadas')
+  @ApiOperation({ summary: 'Lista todas as versões publicadas (para selects).' })
+  versaoPublicadas() {
+    return this.service.listarVersoesPublicadas();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Retorna um formulário com todas as suas versões.' })
   buscarPorId(@Param('id') id: string) {

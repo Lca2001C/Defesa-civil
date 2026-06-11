@@ -175,6 +175,27 @@ async function semearMunicipios(): Promise<number> {
   return dados.length;
 }
 
+/**
+ * COMPDECs: cria um registro placeholder para cada município de MG.
+ * Usa skipDuplicates para ser idempotente — não sobrescreve dados já preenchidos.
+ */
+async function semearCompdecs(): Promise<number> {
+  const municipios = await prisma.municipio.findMany({
+    where: { ufId: 31 }, // MG = IBGE 31
+    select: { id: true },
+  });
+
+  const dados = municipios.map((m) => ({
+    municipioId: m.id,
+    coordenadorNome: 'A preencher',
+    email: null as string | null,
+    telefone: null as string | null,
+  }));
+
+  await prisma.compdec.createMany({ data: dados, skipDuplicates: true });
+  return dados.length;
+}
+
 /** Permissoes: upsert do catalogo "modulo.acao" por chave. */
 async function semearPermissoes(): Promise<number> {
   for (const permissao of PERMISSOES) {
@@ -254,6 +275,60 @@ async function semearSuperAdmin(): Promise<{ criado: boolean; email: string }> {
   return { criado: true, email };
 }
 
+// ----------------------------- Termo LGPD v1.0 -------------------------------
+
+async function semearTermoLgpd(): Promise<boolean> {
+  const versao = "1.0";
+  const jaExiste = await prisma.termoLgpd.findUnique({ where: { versao } });
+  if (jaExiste) return false;
+
+  await prisma.termoLgpd.create({
+    data: {
+      versao,
+      ativo: true,
+      conteudo: `
+**TERMOS DE USO E POLÍTICA DE PRIVACIDADE**
+**Plataforma SIG-COMPDEC MG — Versão ${versao}**
+
+**1. Identificação do Controlador**
+A Coordenadoria Estadual de Defesa Civil de Minas Gerais (CEDEC-MG), vinculada ao Corpo de Bombeiros Militar de Minas Gerais, é o Controlador dos dados pessoais tratados nesta plataforma, nos termos da Lei nº 13.709/2018 (LGPD).
+
+**2. Dados Coletados**
+Ao se cadastrar e utilizar a plataforma, os seguintes dados são coletados:
+- Nome completo, CPF, e-mail, telefone e cargo;
+- Endereço IP e identificador do navegador (user-agent) em cada acesso e submissão;
+- Data e hora das ações realizadas no sistema.
+
+**3. Finalidade do Tratamento**
+Os dados são utilizados exclusivamente para:
+- Identificação e autenticação do usuário;
+- Rastreabilidade e responsabilização das respostas enviadas em nome do município (COMPDEC);
+- Cumprimento de obrigações legais e exercício de competências da Defesa Civil Estadual.
+
+**4. Base Legal**
+O tratamento fundamenta-se no cumprimento de obrigação legal e no exercício regular de atribuições da Administração Pública (art. 7º, II e III; art. 23 da LGPD).
+
+**5. Compartilhamento de Dados**
+Os dados não são compartilhados com terceiros, salvo por obrigação legal ou determinação judicial. Integrações futuras com sistemas federais (ex.: S2ID) serão formalizadas e comunicadas.
+
+**6. Retenção e Descarte**
+Os dados são mantidos pelo prazo exigido pela legislação aplicável e pelas diretrizes da Administração Pública Estadual. Ao término do prazo, os dados são anonimizados ou eliminados de forma segura.
+
+**7. Seus Direitos**
+Nos termos da LGPD, você pode solicitar ao Encarregado (DPO): confirmação do tratamento, acesso, correção, portabilidade, eliminação (quando cabível) e esclarecimentos sobre o uso dos seus dados.
+
+**8. Contato com o Encarregado (DPO)**
+Dúvidas e solicitações podem ser encaminhadas para o canal oficial da CEDEC-MG.
+
+**9. Aceitação**
+Ao marcar a opção "Li e aceito os Termos de Uso e Política de Privacidade", você confirma ter lido este documento na íntegra e concorda com o tratamento dos seus dados conforme descrito acima. O registro deste aceite (data, IP e versão do termo) é armazenado para fins de comprovação.
+      `.trim(),
+    },
+  });
+
+  return true;
+}
+
 // ----------------------------------- Main ------------------------------------
 
 async function main(): Promise<void> {
@@ -261,9 +336,11 @@ async function main(): Promise<void> {
 
   const totalUfs = await semearUfs();
   const totalMunicipios = await semearMunicipios();
+  const totalCompdecs = await semearCompdecs();
   const totalPermissoes = await semearPermissoes();
   const totalPerfis = await semearPerfis();
   const adminResult = await semearSuperAdmin();
+  const termoCriado = await semearTermoLgpd();
 
   // Contagens reais persistidas no banco (confirmacao de idempotencia).
   const ufsNoBanco = await prisma.uf.count();
@@ -278,9 +355,11 @@ async function main(): Promise<void> {
   console.log("Seed concluido com sucesso:");
   console.log(`  UFs processadas:        ${totalUfs} (no banco: ${ufsNoBanco})`);
   console.log(`  Municipios processados: ${totalMunicipios} (no banco: ${municipiosNoBanco})`);
+  console.log(`  COMPDECs criadas:       ${totalCompdecs} (idempotente — skipDuplicates)`);
   console.log(`  Permissoes processadas: ${totalPermissoes} (no banco: ${permissoesNoBanco})`);
   console.log(`  Perfis processados:     ${totalPerfis} (no banco: ${perfisNoBanco})`);
   console.log(`  SUPER_ADMIN:            ${adminStatus}`);
+  console.log(`  Termo LGPD v1.0:        ${termoCriado ? "criado" : "ja existe"}`);
 }
 
 main()

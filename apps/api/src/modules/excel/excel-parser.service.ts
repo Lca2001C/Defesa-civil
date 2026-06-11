@@ -19,6 +19,17 @@ function toChave(texto: string): string {
     .replace(/^_+|_+$/g, '');
 }
 
+/** Garante chaves únicas dentro de uma lista de campos. */
+function dedupChaves(campos: CampoFormulario[]): CampoFormulario[] {
+  const vistos = new Map<string, number>();
+  return campos.map((campo) => {
+    const base = campo.chave || 'campo';
+    const count = vistos.get(base) ?? 0;
+    vistos.set(base, count + 1);
+    return count === 0 ? campo : { ...campo, chave: `${base}_${count + 1}` };
+  });
+}
+
 /** Infere TipoCampo a partir do rótulo e amostras de valores. */
 function inferirTipo(rotulo: string, amostras: unknown[]): TipoCampo {
   const rot = rotulo.toLowerCase();
@@ -147,6 +158,9 @@ export class ExcelParserService {
       secaoAtual.campos.push(campo);
     });
 
+    // Dedup chaves dentro de cada seção
+    secoes.forEach((s) => { s.campos = dedupChaves(s.campos); });
+
     // Se a definição aponta para outra aba de dados, colhe opcoes de lá
     // (funcionalidade futura; por ora usamos o opcoesRaw)
 
@@ -197,7 +211,7 @@ export class ExcelParserService {
     return {
       versao: 1,
       titulo: titulo ?? sheet.name ?? 'Formulário importado',
-      secoes: [{ chave: 'geral', titulo: sheet.name || 'Geral', campos }],
+      secoes: [{ chave: 'geral', titulo: sheet.name || 'Geral', campos: dedupChaves(campos) }],
     };
   }
 

@@ -14,12 +14,13 @@ import {
   Toolbar,
   Typography,
 } from "@mui/material";
-import DashboardIcon from "@mui/icons-material/Dashboard";
+import MapIcon from "@mui/icons-material/Map";
+import BarChartIcon from "@mui/icons-material/BarChart";
 import DescriptionIcon from "@mui/icons-material/Description";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import AssignmentIcon from "@mui/icons-material/Assignment";
 import LocationCityIcon from "@mui/icons-material/LocationCity";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
-import ShieldIcon from "@mui/icons-material/Shield";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { NavLink, Outlet } from "react-router-dom";
 import { type ReactNode } from "react";
@@ -35,8 +36,10 @@ interface ItemMenu {
 }
 
 const itensMenu: ItemMenu[] = [
-  { rotulo: "Painel", icone: <DashboardIcon />, path: "/" },
+  { rotulo: "Painel", icone: <MapIcon />, path: "/" },
+  { rotulo: "Dashboard", icone: <BarChartIcon />, path: "/dashboard" },
   { rotulo: "Formulários", icone: <DescriptionIcon />, path: "/formularios" },
+  { rotulo: "Submissões", icone: <AssignmentIcon />, path: "/submissoes" },
   { rotulo: "Importação", icone: <UploadFileIcon />, path: "/importacao" },
   { rotulo: "Municípios", icone: <LocationCityIcon />, path: "/municipios" },
   { rotulo: "Admin", icone: <AdminPanelSettingsIcon />, path: "/admin" },
@@ -57,8 +60,13 @@ export default function AppLayout() {
         sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
       >
         <Toolbar sx={{ justifyContent: "space-between" }}>
-          <Box sx={{ display: "flex", alignItems: "center" }}>
-            <ShieldIcon sx={{ mr: 1.5 }} />
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              component="img"
+              src="/logo.svg"
+              alt="Defesa Civil MG"
+              sx={{ width: 34, height: 34, flexShrink: 0 }}
+            />
             <Typography variant="h6" noWrap sx={{ fontWeight: 700 }}>
               Defesa Civil MG
             </Typography>
@@ -93,6 +101,19 @@ export default function AppLayout() {
         }}
       >
         <Toolbar />
+        {/* logo + nome na sidebar */}
+        <Box sx={{ px: 2, py: 1.5, display: "flex", alignItems: "center", gap: 1 }}>
+          <Box
+            component="img"
+            src="/logo.svg"
+            alt="logo"
+            sx={{ width: 28, height: 28 }}
+          />
+          <Typography variant="caption" sx={{ color: cores.textoSecundario, lineHeight: 1.2 }}>
+            Plataforma<br />
+            <strong style={{ color: cores.textoPrimario }}>Defesa Civil MG</strong>
+          </Typography>
+        </Box>
         <Box sx={{ overflow: "auto", py: 1 }}>
           <List>
             {itensMenu.map((item) => (

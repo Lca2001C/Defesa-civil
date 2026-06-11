@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CriarFormularioDto {
   @ApiProperty({ example: 'Plano Municipal de Defesa Civil' })
@@ -19,4 +19,9 @@ export class CriarFormularioDto {
   @IsString()
   @MaxLength(100)
   categoria?: string;
+
+  @ApiPropertyOptional({ description: 'Schema gerado pelo parser Excel. Se fornecido, cria a versão 1 (rascunho) automaticamente.' })
+  @IsOptional()
+  @IsObject()
+  schema?: Record<string, unknown>;
 }

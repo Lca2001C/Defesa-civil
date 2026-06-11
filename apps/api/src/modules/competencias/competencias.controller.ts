@@ -9,13 +9,12 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { CompetenciaStatus } from '@prisma/client';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Permissao } from '../../common/decorators/permissao.decorator';
-import { PaginacaoDto } from '../../common/dto/paginacao.dto';
 import { CompetenciasService } from './competencias.service';
 import { AtualizarCompetenciaDto } from './dto/atualizar-competencia.dto';
 import { CriarCompetenciaDto } from './dto/criar-competencia.dto';
+import { FiltrosCompetenciaDto } from './dto/filtros-competencia.dto';
 
 @ApiBearerAuth()
 @ApiTags('competencias')
@@ -32,17 +31,9 @@ export class CompetenciasController {
 
   @Get()
   @ApiOperation({ summary: 'Lista competências com paginação e filtros.' })
-  @ApiQuery({ name: 'ano', required: false, type: Number })
-  @ApiQuery({ name: 'status', required: false, enum: CompetenciaStatus })
-  buscarTodos(
-    @Query() paginacao: PaginacaoDto,
-    @Query('ano') ano?: string,
-    @Query('status') status?: CompetenciaStatus,
-  ) {
-    return this.service.buscarTodos(paginacao, {
-      ano: ano !== undefined ? Number(ano) : undefined,
-      status,
-    });
+  buscarTodos(@Query() filtros: FiltrosCompetenciaDto) {
+    const { pagina, porPagina, ano, status } = filtros;
+    return this.service.buscarTodos({ pagina, porPagina }, { ano, status });
   }
 
   @Get(':id')

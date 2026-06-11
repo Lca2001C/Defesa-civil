@@ -22,7 +22,7 @@ services:
     # Publicar a porta apenas em DEV para inspecao com clientes externos.
     # Em producao esta publicacao e removida pelo override de prod.
     ports:
-      - "5432:5432"
+      - "5436:5432"
     healthcheck:
       # pg_isready confirma que o banco aceita conexoes antes de a API subir.
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]

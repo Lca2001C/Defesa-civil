@@ -16,13 +16,28 @@ export class FormulariosService {
   constructor(private readonly prisma: PrismaService) {}
 
   async criar(dto: CriarFormularioDto) {
-    return this.prisma.formulario.create({
-      data: {
-        nome: dto.nome,
-        descricao: dto.descricao,
-        categoria: dto.categoria,
-        status: FormularioStatus.RASCUNHO,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const formulario = await tx.formulario.create({
+        data: {
+          nome: dto.nome,
+          descricao: dto.descricao,
+          categoria: dto.categoria,
+          status: FormularioStatus.RASCUNHO,
+        },
+      });
+
+      if (dto.schema) {
+        await tx.formularioVersao.create({
+          data: {
+            formularioId: formulario.id,
+            versao: 1,
+            schema: dto.schema as object,
+            status: FormularioStatus.RASCUNHO,
+          },
+        });
+      }
+
+      return formulario;
     });
   }
 
@@ -71,6 +86,20 @@ export class FormulariosService {
         ...(dto.nome !== undefined ? { nome: dto.nome } : {}),
         ...(dto.descricao !== undefined ? { descricao: dto.descricao } : {}),
         ...(dto.categoria !== undefined ? { categoria: dto.categoria } : {}),
+      },
+    });
+  }
+
+  async listarVersoesPublicadas() {
+    return this.prisma.formularioVersao.findMany({
+      where: { status: FormularioStatus.PUBLICADO },
+      orderBy: { publicadoEm: 'desc' },
+      select: {
+        id: true,
+        versao: true,
+        publicadoEm: true,
+        formulario: { select: { id: true, nome: true } },
+        competencia: { select: { id: true, nome: true } },
       },
     });
   }

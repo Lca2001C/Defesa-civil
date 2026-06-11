@@ -200,10 +200,14 @@ model Usuario {
   uf          Uf?                @relation(fields: [ufId], references: [id])
   regional    Regional?          @relation(fields: [regionalId], references: [id])
   municipio   Municipio?         @relation(fields: [municipioId], references: [id])
+  mfaSecret  String?  @map("mfa_secret")
+  mfaAtivo   Boolean  @default(false) @map("mfa_ativo")
+
   submissoes  Submissao[]
   revisoes    RevisaoSubmissao[]
   importacoes ImportacaoLote[]
   logs        LogAuditoria[]
+  aceites     AceiteTermoLgpd[]
 
   @@index([perfilId])
   @@index([municipioId])
@@ -445,4 +449,53 @@ model LogAuditoria {
   @@index([atorId])
   @@index([criadoEm])
   @@map("logs_auditoria")
+}
+
+// =================== AUTENTICACAO / LGPD =====================================
+
+/// Termo de uso / privacidade versionado (LGPD art. 8 e 9).
+/// Exibido obrigatoriamente no cadastro; o aceite fica em AceiteTermoLgpd.
+model TermoLgpd {
+  id       String   @id @default(cuid())
+  versao   String   @unique
+  conteudo String
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now()) @map("created_at")
+
+  aceites AceiteTermoLgpd[]
+
+  @@map("termos_lgpd")
+}
+
+/// Registro imutável de aceite do Termo LGPD (ROPA — art. 37 LGPD).
+/// Grava: usuário, e-mail, IP, user-agent, versão do termo e data/hora.
+model AceiteTermoLgpd {
+  id          String   @id @default(cuid())
+  usuarioId   String?  @map("usuario_id")
+  email       String
+  ip          String
+  userAgent   String?  @map("user_agent")
+  versaoTermo String   @map("versao_termo")
+  aceitouEm   DateTime @default(now()) @map("aceitou_em")
+
+  usuario Usuario?  @relation(fields: [usuarioId], references: [id])
+  termo   TermoLgpd @relation(fields: [versaoTermo], references: [versao])
+
+  @@index([email])
+  @@index([versaoTermo])
+  @@index([usuarioId])
+  @@map("aceites_termo_lgpd")
+}
+
+/// Token de recuperação de senha (SHA-256 hash; validade 1 h; uso único).
+model RecuperacaoSenha {
+  id        String    @id @default(cuid())
+  email     String
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usadoEm   DateTime? @map("usado_em")
+  criadoEm  DateTime  @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("recuperacao_senhas")
 }
