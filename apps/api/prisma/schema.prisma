@@ -293,7 +293,7 @@ model FormularioVersao {
 
   formulario  Formulario   @relation(fields: [formularioId], references: [id])
   competencia Competencia? @relation(fields: [competenciaId], references: [id])
-  secoes      Secao[]
+  paginas     Pagina[]
   submissoes  Submissao[]
 
   @@unique([formularioId, versao])
@@ -301,18 +301,33 @@ model FormularioVersao {
   @@map("formulario_versoes")
 }
 
-/// Secao (agrupamento de perguntas) de uma versao de formulario.
-model Secao {
+/// Pagina (agrupamento de secoes) de uma versao de formulario.
+model Pagina {
   id        String  @id @default(cuid())
   versaoId  String  @map("versao_id")
   ordem     Int
   titulo    String
   descricao String?
 
-  versao    FormularioVersao @relation(fields: [versaoId], references: [id], onDelete: Cascade)
-  perguntas Pergunta[]
+  versao FormularioVersao @relation(fields: [versaoId], references: [id], onDelete: Cascade)
+  secoes Secao[]
 
   @@index([versaoId])
+  @@map("paginas")
+}
+
+/// Secao (agrupamento de perguntas) de uma pagina de formulario.
+model Secao {
+  id        String  @id @default(cuid())
+  paginaId  String  @map("pagina_id")
+  ordem     Int
+  titulo    String
+  descricao String?
+
+  pagina    Pagina     @relation(fields: [paginaId], references: [id], onDelete: Cascade)
+  perguntas Pergunta[]
+
+  @@index([paginaId])
   @@map("secoes")
 }
 

@@ -39,12 +39,11 @@ interface Competencia {
 interface Resumo {
   total: number;
   rascunho: number;
+  emPreenchimento: number;
   enviada: number;
-  emAnalise: number;
   correcaoSolicitada: number;
   revisada: number;
-  validada: number;
-  rejeitada: number;
+  aprovada: number;
   respondidas: number;
   percentualCobertura: number;
 }
@@ -52,14 +51,14 @@ interface Resumo {
 interface TimelineItem {
   data: string;
   enviadas: number;
-  validadas: number;
+  aprovadas: number;
 }
 
 interface PorRegional {
   id: string;
   nome: string;
   total: number;
-  validadas: number;
+  aprovadas: number;
 }
 
 interface PorFormulario {
@@ -68,7 +67,7 @@ interface PorFormulario {
   nome: string;
   versao: number;
   total: number;
-  validadas: number;
+  aprovadas: number;
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -219,9 +218,9 @@ export default function DashboardPage() {
             {[
               { rotulo: "Total", valor: resumo.total, cor: cores.textoPrimario },
               { rotulo: "Respondidas", valor: resumo.respondidas, cor: cores.laranjaPrimario },
-              { rotulo: "Validadas", valor: resumo.validada, cor: cores.verdeSucesso },
-              { rotulo: "Pendentes", valor: resumo.enviada + resumo.emAnalise + resumo.revisada, cor: cores.amareloAtencao },
-              { rotulo: "Rejeitadas", valor: resumo.rejeitada, cor: cores.vermelhoErro },
+              { rotulo: "Aprovadas", valor: resumo.aprovada, cor: cores.verdeSucesso },
+              { rotulo: "Pendentes", valor: resumo.correcaoSolicitada, cor: cores.amareloAtencao },
+              { rotulo: "Em análise", valor: resumo.enviada + resumo.revisada, cor: "#60a5fa" },
             ].map(({ rotulo, valor, cor }) => (
               <Card key={rotulo} sx={{ flex: "1 1 160px", minWidth: 140 }}>
                 <CardContent sx={{ py: 2 }}>
@@ -279,7 +278,7 @@ export default function DashboardPage() {
                         <TableRow>
                           <TableCell>Regional</TableCell>
                           <TableCell align="right">Total</TableCell>
-                          <TableCell sx={{ minWidth: 120 }}>Validadas</TableCell>
+                          <TableCell sx={{ minWidth: 120 }}>Aprovadas</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -288,7 +287,7 @@ export default function DashboardPage() {
                             <TableCell>{r.nome}</TableCell>
                             <TableCell align="right">{r.total}</TableCell>
                             <TableCell>
-                              {barra(r.validadas, r.total, cores.verdeSucesso)}
+                              {barra(r.aprovadas, r.total, cores.verdeSucesso)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -316,7 +315,7 @@ export default function DashboardPage() {
                         <TableRow>
                           <TableCell>Formulário</TableCell>
                           <TableCell align="right">Total</TableCell>
-                          <TableCell sx={{ minWidth: 120 }}>Validadas</TableCell>
+                          <TableCell sx={{ minWidth: 120 }}>Aprovadas</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -335,7 +334,7 @@ export default function DashboardPage() {
                             </TableCell>
                             <TableCell align="right">{f.total}</TableCell>
                             <TableCell>
-                              {barra(f.validadas, f.total, cores.verdeSucesso)}
+                              {barra(f.aprovadas, f.total, cores.verdeSucesso)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -390,8 +389,8 @@ export default function DashboardPage() {
                             height: 10,
                             borderRadius: 1,
                             bgcolor: cores.verdeSucesso,
-                            width: `${(t.validadas / maxTimeline) * 100}%`,
-                            minWidth: t.validadas > 0 ? 4 : 0,
+                            width: `${(t.aprovadas / maxTimeline) * 100}%`,
+                            minWidth: t.aprovadas > 0 ? 4 : 0,
                           }}
                         />
                       </Box>
@@ -409,7 +408,7 @@ export default function DashboardPage() {
                   </Stack>
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: cores.verdeSucesso }} />
-                    <Typography variant="caption" color="text.secondary">Validadas</Typography>
+                    <Typography variant="caption" color="text.secondary">Aprovadas</Typography>
                   </Stack>
                 </Stack>
               </CardContent>

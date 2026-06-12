@@ -15,7 +15,7 @@
 // Execucao: `pnpm prisma:seed` (ver bloco "prisma" no package.json).
 // =============================================================================
 
-import { EscopoUsuario, PrismaClient } from "@prisma/client";
+import { CompetenciaStatus, EscopoUsuario, PrismaClient } from "@prisma/client";
 import * as argon2 from "argon2";
 import * as fs from "fs";
 import * as path from "path";
@@ -481,6 +481,38 @@ async function semearTemplates(): Promise<number> {
   return criados;
 }
 
+// ----------------------------- Competência padrão ----------------------------
+
+/** Cria uma competência ABERTA para o ano corrente, se nenhuma ABERTA existir. */
+async function semearCompetencia(): Promise<boolean> {
+  const jaAberta = await prisma.competencia.findFirst({
+    where: { status: CompetenciaStatus.ABERTA },
+  });
+  if (jaAberta) return false;
+
+  const ano = new Date().getFullYear();
+  const nome = `Competência ${ano}`;
+  const existente = await prisma.competencia.findFirst({ where: { nome } });
+  if (existente) {
+    await prisma.competencia.update({
+      where: { id: existente.id },
+      data: { status: CompetenciaStatus.ABERTA },
+    });
+    return true;
+  }
+
+  await prisma.competencia.create({
+    data: {
+      nome,
+      ano,
+      dataInicio: new Date(`${ano}-01-01T00:00:00.000Z`),
+      dataFim: new Date(`${ano}-12-31T23:59:59.000Z`),
+      status: CompetenciaStatus.ABERTA,
+    },
+  });
+  return true;
+}
+
 // ----------------------------- Termo LGPD v1.0 -------------------------------
 
 async function semearTermoLgpd(): Promise<boolean> {
@@ -549,6 +581,7 @@ async function main(): Promise<void> {
   const termoCriado = await semearTermoLgpd();
   const totalBlocos = await semearBlocos();
   const totalTemplates = await semearTemplates();
+  const competenciaCriada = await semearCompetencia();
 
   // Contagens reais persistidas no banco (confirmacao de idempotencia).
   const ufsNoBanco = await prisma.uf.count();
@@ -570,6 +603,7 @@ async function main(): Promise<void> {
   console.log(`  Termo LGPD v1.0:        ${termoCriado ? "criado" : "ja existe"}`);
   console.log(`  Blocos reutilizaveis:   ${totalBlocos} criados (idempotente)`);
   console.log(`  Templates de formulario:${totalTemplates} criados (idempotente)`);
+  console.log(`  Competencia ABERTA:     ${competenciaCriada ? "criada/aberta" : "ja existe"}`);
 }
 
 main()

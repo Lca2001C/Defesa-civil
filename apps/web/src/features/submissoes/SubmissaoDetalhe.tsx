@@ -161,7 +161,10 @@ export default function SubmissaoDetalhe() {
   if (!data) return null;
 
   const rotuloPorCodigo = new Map<string, string>();
-  for (const s of data.schema?.secoes ?? []) {
+  const secoesSchema = data.schema?.paginas?.length
+    ? data.schema.paginas.flatMap((pg) => pg.secoes ?? [])
+    : data.schema?.secoes ?? [];
+  for (const s of secoesSchema) {
     for (const p of s.perguntas) rotuloPorCodigo.set(p.codigo, p.rotulo);
   }
 
@@ -302,7 +305,7 @@ export default function SubmissaoDetalhe() {
               ref={inputRef}
               type="file"
               hidden
-              accept=".pdf,.docx,.doc,.xlsx,.xls,.zip,.png,.jpg,.jpeg"
+              accept=".pdf,.docx,.doc,.xlsx,.xls,.zip,.png,.jpg,.jpeg,.kml,.kmz,.json,.geojson,.shp,.dbf,.shx,.prj"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) uploadMutation.mutate(f);
@@ -311,7 +314,7 @@ export default function SubmissaoDetalhe() {
             />
           </Box>
           <Typography variant="caption" color="text.secondary">
-            Tipos aceitos: PDF, DOCX, XLSX, ZIP, PNG, JPG.
+            Tipos aceitos: PDF, DOCX, XLSX, ZIP, PNG, JPG · Geoespaciais: KML, KMZ, SHP, GeoJSON.
           </Typography>
           <List dense>
             {data.anexos.map((a) => (

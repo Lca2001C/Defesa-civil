@@ -14,14 +14,28 @@ import {
   Box,
   Button,
   CircularProgress,
+  IconButton,
   Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import SaveIcon from "@mui/icons-material/Save";
-import type { Pergunta, SchemaFormulario, SecaoFormulario, TipoPergunta } from "@dcmg/contracts";
-import { criarPergunta, criarSecao, normalizarIds } from "./tipos";
+import DeleteIcon from "@mui/icons-material/Delete";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import type {
+  PaginaFormulario,
+  Pergunta,
+  SchemaFormulario,
+  SecaoFormulario,
+  TipoPergunta,
+} from "@dcmg/contracts";
+import { criarPagina, criarPergunta, criarSecao, normalizarPaginas } from "./tipos";
 import { SortableSecao } from "./SortableSecao";
 import { PreviewDialog } from "./PreviewDialog";
 import { InserirBlocoDialog } from "./InserirBlocoDialog";
@@ -34,57 +48,108 @@ interface Props {
 }
 
 export function FormularioBuilder({ schemaInicial, salvando, erro, onSalvar }: Props) {
-  const [secoes, setSecoes] = useState<SecaoFormulario[]>(() =>
-    normalizarIds(schemaInicial.secoes ?? []),
-  );
+  const [paginas, setPaginas] = useState<PaginaFormulario[]>(() => {
+    const iniciais = schemaInicial.paginas?.length
+      ? schemaInicial.paginas
+      : [{ titulo: "Página 1", secoes: schemaInicial.secoes ?? [] }];
+    return normalizarPaginas(iniciais);
+  });
+  const [paginaAtiva, setPaginaAtiva] = useState(0);
   const [preview, setPreview] = useState(false);
   const [blocoSecaoId, setBlocoSecaoId] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  const todasPerguntas = useMemo(() => secoes.flatMap((s) => s.perguntas), [secoes]);
+  const idx = Math.min(paginaAtiva, paginas.length - 1);
+  const pagina = paginas[idx];
+  const secoes = pagina?.secoes ?? [];
+
+  const todasPerguntas = useMemo(
+    () => paginas.flatMap((p) => p.secoes.flatMap((s) => s.perguntas)),
+    [paginas],
+  );
 
   const schemaAtual: SchemaFormulario = useMemo(
     () => ({
       versao: schemaInicial.versao,
       titulo: schemaInicial.titulo,
       descricao: schemaInicial.descricao,
-      secoes: secoes.map((s, i) => ({
-        ...s,
+      paginas: paginas.map((p, i) => ({
+        ...p,
         ordem: i,
-        perguntas: s.perguntas.map((p, j) => ({ ...p, ordem: j })),
+        secoes: p.secoes.map((s, j) => ({
+          ...s,
+          ordem: j,
+          perguntas: s.perguntas.map((q, k) => ({ ...q, ordem: k })),
+        })),
       })),
     }),
-    [secoes, schemaInicial],
+    [paginas, schemaInicial],
   );
 
+  // ── Mutações de página ──────────────────────────────────────────────────
+  function setPaginaCampo(patch: Partial<PaginaFormulario>) {
+    setPaginas((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  }
+  function addPagina() {
+    setPaginas((prev) => {
+      const nova = [...prev, criarPagina(prev.length)];
+      return nova;
+    });
+    setPaginaAtiva(paginas.length);
+  }
+  function removerPagina() {
+    if (paginas.length <= 1) return;
+    setPaginas((prev) => prev.filter((_, i) => i !== idx));
+    setPaginaAtiva((p) => Math.max(0, p - 1));
+  }
+  function moverPagina(delta: number) {
+    const destino = idx + delta;
+    if (destino < 0 || destino >= paginas.length) return;
+    setPaginas((prev) => arrayMove(prev, idx, destino));
+    setPaginaAtiva(destino);
+  }
+
+  // ── Mutações de seção (na página ativa) ─────────────────────────────────
+  function setSecoesPaginaAtiva(novas: SecaoFormulario[]) {
+    setPaginas((prev) => prev.map((p, i) => (i === idx ? { ...p, secoes: novas } : p)));
+  }
   function setSecao(id: string, nova: SecaoFormulario) {
-    setSecoes((prev) => prev.map((s) => (s.id === id ? nova : s)));
+    setSecoesPaginaAtiva(secoes.map((s) => (s.id === id ? nova : s)));
   }
   function removerSecao(id: string) {
-    setSecoes((prev) => prev.filter((s) => s.id !== id));
+    setSecoesPaginaAtiva(secoes.filter((s) => s.id !== id));
   }
   function addSecao() {
-    setSecoes((prev) => [...prev, criarSecao()]);
+    setSecoesPaginaAtiva([...secoes, criarSecao()]);
   }
   function addPergunta(secaoId: string, tipo: TipoPergunta) {
-    setSecoes((prev) =>
-      prev.map((s) => (s.id === secaoId ? { ...s, perguntas: [...s.perguntas, criarPergunta(tipo)] } : s)),
+    setSecoesPaginaAtiva(
+      secoes.map((s) => (s.id === secaoId ? { ...s, perguntas: [...s.perguntas, criarPergunta(tipo)] } : s)),
     );
   }
   function inserirBloco(perguntas: Pergunta[]) {
     if (!blocoSecaoId) return;
-    setSecoes((prev) =>
-      prev.map((s) =>
-        s.id === blocoSecaoId ? { ...s, perguntas: [...s.perguntas, ...perguntas] } : s,
-      ),
+    setSecoesPaginaAtiva(
+      secoes.map((s) => (s.id === blocoSecaoId ? { ...s, perguntas: [...s.perguntas, ...perguntas] } : s)),
     );
   }
+  function moverSecaoParaPagina(secaoId: string, destinoPaginaId: string) {
+    setPaginas((prev) => {
+      const secao = prev[idx]?.secoes.find((s) => s.id === secaoId);
+      if (!secao) return prev;
+      return prev.map((p, i) => {
+        if (i === idx) return { ...p, secoes: p.secoes.filter((s) => s.id !== secaoId) };
+        if (p.id === destinoPaginaId) return { ...p, secoes: [...p.secoes, secao] };
+        return p;
+      });
+    });
+  }
 
+  // ── DnD (seções e perguntas dentro da página ativa) ─────────────────────
   function secaoDe(codigo: string): SecaoFormulario | undefined {
     return secoes.find((s) => s.perguntas.some((p) => p.codigo === codigo));
   }
-
   function alvoSecaoId(overId: string, overData: Record<string, unknown> | undefined): string | undefined {
     if (overData?.type === "pergunta") return overData.secaoId as string;
     if (overData?.type === "container") return overData.secaoId as string;
@@ -94,25 +159,22 @@ export function FormularioBuilder({ schemaInicial, salvando, erro, onSalvar }: P
 
   function handleDragOver(event: DragOverEvent) {
     const { active, over } = event;
-    if (!over) return;
-    if (active.data.current?.type !== "pergunta") return;
-
+    if (!over || active.data.current?.type !== "pergunta") return;
     const origemId = active.data.current.secaoId as string;
     const destinoId = alvoSecaoId(String(over.id), over.data.current as Record<string, unknown>);
     if (!destinoId || origemId === destinoId) return;
 
-    setSecoes((prev) => {
-      const origem = prev.find((s) => s.id === origemId);
-      const destino = prev.find((s) => s.id === destinoId);
-      if (!origem || !destino) return prev;
-      const movida = origem.perguntas.find((p) => p.codigo === active.id);
-      if (!movida) return prev;
-      return prev.map((s) => {
-        if (s.id === origemId) return { ...s, perguntas: s.perguntas.filter((p) => p.codigo !== active.id) };
-        if (s.id === destinoId) return { ...s, perguntas: [...s.perguntas, movida] };
-        return s;
-      });
-    });
+    setSecoesPaginaAtiva(
+      ((): SecaoFormulario[] => {
+        const movida = secoes.find((s) => s.id === origemId)?.perguntas.find((p) => p.codigo === active.id);
+        if (!movida) return secoes;
+        return secoes.map((s) => {
+          if (s.id === origemId) return { ...s, perguntas: s.perguntas.filter((p) => p.codigo !== active.id) };
+          if (s.id === destinoId) return { ...s, perguntas: [...s.perguntas, movida] };
+          return s;
+        });
+      })(),
+    );
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -121,32 +183,28 @@ export function FormularioBuilder({ schemaInicial, salvando, erro, onSalvar }: P
     const tipo = active.data.current?.type;
 
     if (tipo === "secao" && over.data.current?.type === "secao" && active.id !== over.id) {
-      setSecoes((prev) => {
-        const oldIndex = prev.findIndex((s) => s.id === active.id);
-        const newIndex = prev.findIndex((s) => s.id === over.id);
-        return oldIndex >= 0 && newIndex >= 0 ? arrayMove(prev, oldIndex, newIndex) : prev;
-      });
+      const oldIndex = secoes.findIndex((s) => s.id === active.id);
+      const newIndex = secoes.findIndex((s) => s.id === over.id);
+      if (oldIndex >= 0 && newIndex >= 0) setSecoesPaginaAtiva(arrayMove(secoes, oldIndex, newIndex));
       return;
     }
 
-    if (tipo === "pergunta") {
+    if (tipo === "pergunta" && over.data.current?.type === "pergunta" && active.id !== over.id) {
       const secao = secaoDe(String(active.id));
-      if (!secao) return;
-      if (over.data.current?.type === "pergunta" && active.id !== over.id) {
-        const mesmaSecao = secao.perguntas.some((p) => p.codigo === over.id);
-        if (mesmaSecao) {
-          setSecoes((prev) =>
-            prev.map((s) => {
-              if (s.id !== secao.id) return s;
-              const oldIndex = s.perguntas.findIndex((p) => p.codigo === active.id);
-              const newIndex = s.perguntas.findIndex((p) => p.codigo === over.id);
-              return { ...s, perguntas: arrayMove(s.perguntas, oldIndex, newIndex) };
-            }),
-          );
-        }
-      }
+      if (!secao || !secao.perguntas.some((p) => p.codigo === over.id)) return;
+      const oldIndex = secao.perguntas.findIndex((p) => p.codigo === active.id);
+      const newIndex = secao.perguntas.findIndex((p) => p.codigo === over.id);
+      setSecoesPaginaAtiva(
+        secoes.map((s) =>
+          s.id === secao.id ? { ...s, perguntas: arrayMove(s.perguntas, oldIndex, newIndex) } : s,
+        ),
+      );
     }
   }
+
+  const outrasPaginas = paginas
+    .filter((_, i) => i !== idx)
+    .map((p) => ({ id: p.id!, titulo: p.titulo }));
 
   return (
     <Box>
@@ -166,6 +224,65 @@ export function FormularioBuilder({ schemaInicial, salvando, erro, onSalvar }: P
         </Button>
       </Stack>
 
+      {/* Abas de páginas */}
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+        <Tabs
+          value={idx}
+          onChange={(_, v: number) => setPaginaAtiva(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ flex: 1, borderBottom: 1, borderColor: "divider" }}
+        >
+          {paginas.map((p, i) => (
+            <Tab key={p.id ?? i} label={p.titulo || `Página ${i + 1}`} />
+          ))}
+        </Tabs>
+        <Button startIcon={<AddIcon />} size="small" onClick={addPagina}>
+          Página
+        </Button>
+      </Stack>
+
+      {/* Cabeçalho da página ativa */}
+      {pagina && (
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center" sx={{ mb: 2 }}>
+          <TextField
+            label="Título da página"
+            value={pagina.titulo}
+            onChange={(e) => setPaginaCampo({ titulo: e.target.value })}
+            size="small"
+            sx={{ flex: 1 }}
+          />
+          <TextField
+            label="Descrição da página (opcional)"
+            value={pagina.descricao ?? ""}
+            onChange={(e) => setPaginaCampo({ descricao: e.target.value })}
+            size="small"
+            sx={{ flex: 1 }}
+          />
+          <Tooltip title="Mover página para a esquerda">
+            <span>
+              <IconButton size="small" disabled={idx === 0} onClick={() => moverPagina(-1)}>
+                <ChevronLeftIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Mover página para a direita">
+            <span>
+              <IconButton size="small" disabled={idx === paginas.length - 1} onClick={() => moverPagina(1)}>
+                <ChevronRightIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Excluir página">
+            <span>
+              <IconButton size="small" color="error" disabled={paginas.length <= 1} onClick={removerPagina}>
+                <DeleteIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Stack>
+      )}
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -178,10 +295,12 @@ export function FormularioBuilder({ schemaInicial, salvando, erro, onSalvar }: P
               key={s.id}
               secao={s}
               todasPerguntas={todasPerguntas}
+              outrasPaginas={outrasPaginas}
               onChange={(nova) => setSecao(s.id!, nova)}
               onRemover={() => removerSecao(s.id!)}
               onAddPergunta={(tipo) => addPergunta(s.id!, tipo)}
               onInserirBloco={() => setBlocoSecaoId(s.id!)}
+              onMoverParaPagina={(paginaId) => moverSecaoParaPagina(s.id!, paginaId)}
             />
           ))}
         </SortableContext>
@@ -189,7 +308,7 @@ export function FormularioBuilder({ schemaInicial, salvando, erro, onSalvar }: P
 
       {secoes.length === 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Nenhuma seção ainda. Comece adicionando uma seção.
+          Nenhuma seção nesta página. Adicione uma seção.
         </Typography>
       )}
 

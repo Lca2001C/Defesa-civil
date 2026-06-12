@@ -9,10 +9,22 @@ import {
   type Pergunta,
   type SchemaFormulario,
 } from "@dcmg/contracts";
+import type { SecaoFormulario } from "@dcmg/contracts";
 import { cpfValido } from "./masks";
 
 function soDigitos(v: unknown): string {
   return String(v ?? "").replace(/\D/g, "");
+}
+
+/** Retorna todas as seções do schema, suportando páginas e entrada legada (secoes). */
+export function todasSecoes(schema: SchemaFormulario): SecaoFormulario[] {
+  if (schema.paginas?.length) return schema.paginas.flatMap((p) => p.secoes ?? []);
+  return schema.secoes ?? [];
+}
+
+/** Retorna todas as perguntas do schema (achatadas). */
+export function todasPerguntas(schema: SchemaFormulario): Pergunta[] {
+  return todasSecoes(schema).flatMap((s) => s.perguntas ?? []);
 }
 
 function validadorCampo(campo: Pergunta): z.ZodTypeAny {
@@ -149,15 +161,13 @@ function validadorCampo(campo: Pergunta): z.ZodTypeAny {
 /** Retorna um z.object com um validador por pergunta do schema. */
 export function gerarSchemaZod(schema: SchemaFormulario): z.ZodObject<z.ZodRawShape> {
   const shape: z.ZodRawShape = {};
-  for (const secao of schema.secoes) {
-    for (const campo of secao.perguntas) {
-      // Campos AUTOMATICO são preenchidos pelo servidor; não validar no cliente.
-      if (campo.tipo === TipoPergunta.AUTOMATICO) {
-        shape[campo.codigo] = z.any().optional();
-        continue;
-      }
-      shape[campo.codigo] = validadorCampo(campo);
+  for (const campo of todasPerguntas(schema)) {
+    // Campos AUTOMATICO são preenchidos pelo servidor; não validar no cliente.
+    if (campo.tipo === TipoPergunta.AUTOMATICO) {
+      shape[campo.codigo] = z.any().optional();
+      continue;
     }
+    shape[campo.codigo] = validadorCampo(campo);
   }
   return z.object(shape);
 }
@@ -165,18 +175,16 @@ export function gerarSchemaZod(schema: SchemaFormulario): z.ZodObject<z.ZodRawSh
 /** Valores iniciais em branco para todas as perguntas do schema. */
 export function construirDefaultValues(schema: SchemaFormulario): Record<string, unknown> {
   const valores: Record<string, unknown> = {};
-  for (const secao of schema.secoes) {
-    for (const campo of secao.perguntas) {
-      switch (campo.tipo) {
-        case TipoPergunta.CHECKBOX:
-          valores[campo.codigo] = [];
-          break;
-        case TipoPergunta.SIM_NAO:
-          valores[campo.codigo] = undefined;
-          break;
-        default:
-          valores[campo.codigo] = "";
-      }
+  for (const campo of todasPerguntas(schema)) {
+    switch (campo.tipo) {
+      case TipoPergunta.CHECKBOX:
+        valores[campo.codigo] = [];
+        break;
+      case TipoPergunta.SIM_NAO:
+        valores[campo.codigo] = undefined;
+        break;
+      default:
+        valores[campo.codigo] = "";
     }
   }
   return valores;

@@ -160,6 +160,16 @@ export class AuthService {
       throw new BadRequestException('Versão do termo de privacidade inválida.');
     }
 
+    // Município (opcional): se informado, precisa existir (evita FK 500).
+    if (dto.municipioId !== undefined && dto.municipioId !== null) {
+      const municipio = await this.prisma.municipio.findUnique({
+        where: { id: dto.municipioId },
+      });
+      if (!municipio) {
+        throw new BadRequestException('Município (código IBGE) não encontrado.');
+      }
+    }
+
     const senhaHash = await argon2.hash(dto.senha, { type: argon2.argon2id });
 
     // Transação: cria usuário + registra aceite LGPD

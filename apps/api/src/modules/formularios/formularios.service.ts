@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { CompetenciaStatus, FormularioStatus, Prisma } from '@prisma/client';
 import type {
+  PaginaFormulario,
   Pergunta,
   RegraCondicional,
   SchemaFormulario,
@@ -127,13 +128,14 @@ export class FormulariosService {
     });
     const proximo = (ultima?.versao ?? 0) + 1;
 
-    return this.prisma.$transaction(async (tx) => {
+    const novaVersao = await this.prisma.$transaction(async (tx) => {
       const versao = await tx.formularioVersao.create({
         data: { formularioId, versao: proximo, status: FormularioStatus.RASCUNHO },
       });
       await this.decomporSchema(tx, versao.id, dto.schema as unknown as SchemaFormulario);
-      return this.comporVersao(tx, versao.id);
+      return versao;
     });
+    return this.buscarVersao(formularioId, novaVersao.id);
   }
 
   /** Retorna uma versão com o schema COMPOSTO (secoes→perguntas→opcoes→regras). */
@@ -184,10 +186,10 @@ export class FormulariosService {
       return this.criarVersao(formularioId, dto);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       await this.decomporSchema(tx, versaoId, dto.schema as unknown as SchemaFormulario);
-      return this.comporVersao(tx, versaoId);
     });
+    return this.buscarVersao(formularioId, versaoId);
   }
 
   async publicarVersao(formularioId: string, versaoId: string, dto: PublicarVersaoDto) {
@@ -286,14 +288,19 @@ export class FormulariosService {
     const versao = await db.formularioVersao.findUniqueOrThrow({
       where: { id: versaoId },
       include: {
-        secoes: {
+        paginas: {
           orderBy: { ordem: 'asc' },
           include: {
-            perguntas: {
+            secoes: {
               orderBy: { ordem: 'asc' },
               include: {
-                opcoes: { orderBy: { ordem: 'asc' } },
-                regrasComoAlvo: { include: { origem: { select: { codigo: true } } } },
+                perguntas: {
+                  orderBy: { ordem: 'asc' },
+                  include: {
+                    opcoes: { orderBy: { ordem: 'asc' } },
+                    regrasComoAlvo: { include: { origem: { select: { codigo: true } } } },
+                  },
+                },
               },
             },
           },
@@ -303,103 +310,128 @@ export class FormulariosService {
 
     return {
       versao: versao.versao,
-      secoes: versao.secoes.map((s) => ({
-        id: s.id,
-        titulo: s.titulo,
-        descricao: s.descricao ?? undefined,
-        ordem: s.ordem,
-        perguntas: s.perguntas.map((p) => ({
-          id: p.id,
-          codigo: p.codigo,
-          rotulo: p.rotulo,
-          tipo: p.tipo as Pergunta['tipo'],
-          obrigatorio: p.obrigatorio,
-          ajuda: p.ajuda ?? undefined,
-          ordem: p.ordem,
-          fonteAutomatica: (p.fonteAutomatica ?? undefined) as Pergunta['fonteAutomatica'],
-          validacoes: {
-            min: p.min ?? undefined,
-            max: p.max ?? undefined,
-            padrao: p.padrao ?? undefined,
-            tamanhoMaximoMb: p.tamanhoMaximoMb ?? undefined,
-            tiposArquivo: p.tiposArquivo.length ? p.tiposArquivo : undefined,
-          },
-          opcoes: p.opcoes.map((o) => ({ valor: o.valor, rotulo: o.rotulo, ordem: o.ordem })),
-          regras: p.regrasComoAlvo.map((r) => ({
-            origemCodigo: r.origem.codigo,
-            operador: r.operador as RegraCondicional['operador'],
-            valor: r.valor,
-            acao: r.acao as RegraCondicional['acao'],
+      paginas: versao.paginas.map((pg) => ({
+        id: pg.id,
+        titulo: pg.titulo,
+        descricao: pg.descricao ?? undefined,
+        ordem: pg.ordem,
+        secoes: pg.secoes.map((s) => ({
+          id: s.id,
+          titulo: s.titulo,
+          descricao: s.descricao ?? undefined,
+          ordem: s.ordem,
+          perguntas: s.perguntas.map((p) => ({
+            id: p.id,
+            codigo: p.codigo,
+            rotulo: p.rotulo,
+            tipo: p.tipo as Pergunta['tipo'],
+            obrigatorio: p.obrigatorio,
+            ajuda: p.ajuda ?? undefined,
+            ordem: p.ordem,
+            fonteAutomatica: (p.fonteAutomatica ?? undefined) as Pergunta['fonteAutomatica'],
+            validacoes: {
+              min: p.min ?? undefined,
+              max: p.max ?? undefined,
+              padrao: p.padrao ?? undefined,
+              tamanhoMaximoMb: p.tamanhoMaximoMb ?? undefined,
+              tiposArquivo: p.tiposArquivo.length ? p.tiposArquivo : undefined,
+            },
+            opcoes: p.opcoes.map((o) => ({ valor: o.valor, rotulo: o.rotulo, ordem: o.ordem })),
+            regras: p.regrasComoAlvo.map((r) => ({
+              origemCodigo: r.origem.codigo,
+              operador: r.operador as RegraCondicional['operador'],
+              valor: r.valor,
+              acao: r.acao as RegraCondicional['acao'],
+            })),
           })),
         })),
       })),
     };
   }
 
-  /** Apaga e regrava as linhas (secoes/perguntas/opcoes/regras) de uma versão. */
+  /** Apaga e regrava as linhas (paginas/secoes/perguntas/opcoes/regras) de uma versão. */
   async decomporSchema(
     tx: Prisma.TransactionClient,
     versaoId: string,
     schema: SchemaFormulario,
   ): Promise<void> {
-    await tx.secao.deleteMany({ where: { versaoId } });
+    // Apaga as páginas da versão; o cascade derruba seções/perguntas/opções/regras.
+    await tx.pagina.deleteMany({ where: { versaoId } });
 
     const codigoParaId = new Map<string, string>();
     const regrasPendentes: { alvoCodigo: string; regra: RegraCondicional }[] = [];
 
-    const secoes: SecaoFormulario[] = schema.secoes ?? [];
-    for (let si = 0; si < secoes.length; si++) {
-      const sec = secoes[si]!;
-      const secao = await tx.secao.create({
+    // Aceita schema com páginas OU entrada legada apenas com seções (embrulha em "Página 1").
+    const paginas: PaginaFormulario[] =
+      schema.paginas && schema.paginas.length > 0
+        ? schema.paginas
+        : [{ titulo: 'Página 1', secoes: schema.secoes ?? [] }];
+
+    for (let pgi = 0; pgi < paginas.length; pgi++) {
+      const pg = paginas[pgi]!;
+      const pagina = await tx.pagina.create({
         data: {
           versaoId,
-          ordem: sec.ordem ?? si,
-          titulo: sec.titulo || `Seção ${si + 1}`,
-          descricao: sec.descricao ?? null,
+          ordem: pg.ordem ?? pgi,
+          titulo: pg.titulo || `Página ${pgi + 1}`,
+          descricao: pg.descricao ?? null,
         },
       });
 
-      const perguntas: Pergunta[] = sec.perguntas ?? [];
-      for (let pi = 0; pi < perguntas.length; pi++) {
-        const p = perguntas[pi]!;
-        if (!p.codigo) {
-          throw new BadRequestException(`Pergunta sem 'codigo' na seção "${sec.titulo}".`);
-        }
-        if (codigoParaId.has(p.codigo)) {
-          throw new BadRequestException(`Código de pergunta duplicado: "${p.codigo}".`);
-        }
-        const pergunta = await tx.pergunta.create({
+      const secoes: SecaoFormulario[] = pg.secoes ?? [];
+      for (let si = 0; si < secoes.length; si++) {
+        const sec = secoes[si]!;
+        const secao = await tx.secao.create({
           data: {
-            secaoId: secao.id,
-            ordem: p.ordem ?? pi,
-            codigo: p.codigo,
-            rotulo: p.rotulo,
-            tipo: p.tipo,
-            obrigatorio: !!p.obrigatorio,
-            ajuda: p.ajuda ?? null,
-            min: p.validacoes?.min ?? null,
-            max: p.validacoes?.max ?? null,
-            padrao: p.validacoes?.padrao ?? null,
-            tamanhoMaximoMb: p.validacoes?.tamanhoMaximoMb ?? null,
-            tiposArquivo: p.validacoes?.tiposArquivo ?? [],
-            fonteAutomatica: p.fonteAutomatica ?? null,
+            paginaId: pagina.id,
+            ordem: sec.ordem ?? si,
+            titulo: sec.titulo || `Seção ${si + 1}`,
+            descricao: sec.descricao ?? null,
           },
         });
-        codigoParaId.set(p.codigo, pergunta.id);
 
-        if (p.opcoes?.length) {
-          await tx.opcaoPergunta.createMany({
-            data: p.opcoes.map((o, i) => ({
-              perguntaId: pergunta.id,
-              ordem: o.ordem ?? i,
-              valor: o.valor,
-              rotulo: o.rotulo,
-            })),
+        const perguntas: Pergunta[] = sec.perguntas ?? [];
+        for (let pi = 0; pi < perguntas.length; pi++) {
+          const p = perguntas[pi]!;
+          if (!p.codigo) {
+            throw new BadRequestException(`Pergunta sem 'codigo' na seção "${sec.titulo}".`);
+          }
+          if (codigoParaId.has(p.codigo)) {
+            throw new BadRequestException(`Código de pergunta duplicado: "${p.codigo}".`);
+          }
+          const pergunta = await tx.pergunta.create({
+            data: {
+              secaoId: secao.id,
+              ordem: p.ordem ?? pi,
+              codigo: p.codigo,
+              rotulo: p.rotulo,
+              tipo: p.tipo,
+              obrigatorio: !!p.obrigatorio,
+              ajuda: p.ajuda ?? null,
+              min: p.validacoes?.min ?? null,
+              max: p.validacoes?.max ?? null,
+              padrao: p.validacoes?.padrao ?? null,
+              tamanhoMaximoMb: p.validacoes?.tamanhoMaximoMb ?? null,
+              tiposArquivo: p.validacoes?.tiposArquivo ?? [],
+              fonteAutomatica: p.fonteAutomatica ?? null,
+            },
           });
-        }
+          codigoParaId.set(p.codigo, pergunta.id);
 
-        for (const regra of p.regras ?? []) {
-          regrasPendentes.push({ alvoCodigo: p.codigo, regra });
+          if (p.opcoes?.length) {
+            await tx.opcaoPergunta.createMany({
+              data: p.opcoes.map((o, i) => ({
+                perguntaId: pergunta.id,
+                ordem: o.ordem ?? i,
+                valor: o.valor,
+                rotulo: o.rotulo,
+              })),
+            });
+          }
+
+          for (const regra of p.regras ?? []) {
+            regrasPendentes.push({ alvoCodigo: p.codigo, regra });
+          }
         }
       }
     }

@@ -138,14 +138,35 @@ export interface SecaoFormulario {
   titulo: string;
   /** Descricao opcional. */
   descricao?: string;
-  /** Ordem da secao. */
+  /** Ordem da secao dentro da pagina. */
   ordem?: number;
   /** Perguntas pertencentes a secao. */
   perguntas: Pergunta[];
 }
 
 /**
+ * Pagina (agrupamento de secoes) do formulario. Cada pagina e exibida como
+ * um passo no preenchimento (navegacao Avancar/Voltar).
+ */
+export interface PaginaFormulario {
+  /** Identificador no banco (presente apenas em schemas carregados). */
+  id?: string;
+  /** Titulo da pagina. */
+  titulo: string;
+  /** Descricao opcional. */
+  descricao?: string;
+  /** Ordem da pagina. */
+  ordem?: number;
+  /** Secoes que compoem a pagina. */
+  secoes: SecaoFormulario[];
+}
+
+/**
  * Schema completo e versionado de um formulario (projecao JSON).
+ *
+ * O backend sempre devolve `paginas`. `secoes` permanece opcional apenas como
+ * forma de ENTRADA legada (ex.: templates de seed sem paginas), embrulhada em
+ * uma pagina default na decomposicao.
  */
 export interface SchemaFormulario {
   /** Numero da versao. */
@@ -154,8 +175,10 @@ export interface SchemaFormulario {
   titulo?: string;
   /** Descricao do formulario. */
   descricao?: string;
-  /** Secoes que compoem o formulario. */
-  secoes: SecaoFormulario[];
+  /** Paginas que compoem o formulario. */
+  paginas: PaginaFormulario[];
+  /** Entrada legada: secoes sem pagina (embrulhadas em "Pagina 1"). */
+  secoes?: SecaoFormulario[];
 }
 
 /**

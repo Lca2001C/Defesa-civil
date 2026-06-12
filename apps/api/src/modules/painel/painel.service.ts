@@ -5,18 +5,18 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 export type StatusMapa = 'RESPONDIDO' | 'EM_PREENCHIMENTO' | 'NAO_RESPONDEU';
 
 const PRIORIDADE_STATUS: Record<string, number> = {
-  ENVIADO: 3,
-  CORRECAO_SOLICITADA: 3,
+  APROVADO: 4,
   REVISADO: 3,
-  APROVADO: 3,
+  ENVIADO: 3,
+  CORRECAO_SOLICITADA: 2, // correção pendente → ainda em andamento, não "respondido"
   EM_PREENCHIMENTO: 1,
   RASCUNHO: 1,
 };
 
 function classificar(status: string): StatusMapa {
   const p = PRIORIDADE_STATUS[status] ?? 0;
-  if (p >= 3) return 'RESPONDIDO';
-  if (p === 1) return 'EM_PREENCHIMENTO';
+  if (p >= 3) return 'RESPONDIDO';     // ENVIADO / REVISADO / APROVADO → verde
+  if (p >= 1) return 'EM_PREENCHIMENTO'; // RASCUNHO / EM_PREENCHIMENTO / CORRECAO_SOLICITADA → amarelo
   return 'NAO_RESPONDEU';
 }
 
@@ -88,11 +88,7 @@ export class PainelService {
   async buscarDrawerMunicipio(municipioId: number, competenciaId: string) {
     const municipio = await this.prisma.municipio.findUnique({
       where: { id: municipioId },
-      include: {
-        uf: { select: { sigla: true } },
-        regional: { select: { nome: true, sigla: true } },
-        compdec: true,
-      },
+      include: { compdec: true },
     });
 
     const submissoes = await this.prisma.submissao.findMany({
@@ -104,11 +100,30 @@ export class PainelService {
         protocolo: true,
         status: true,
         nomeRespondente: true,
-        enviadoEm: true,
-        formularioVersao: { select: { versao: true, formulario: { select: { nome: true } } } },
+        criadoEm: true,
       },
     });
 
-    return { municipio, submissoes };
+    return {
+      municipio: {
+        id: municipio?.id ?? municipioId,
+        nome: municipio?.nome ?? '',
+        codigoIbge: String(municipio?.id ?? municipioId),
+      },
+      compdec: municipio?.compdec
+        ? {
+            coordenadorNome: municipio.compdec.coordenadorNome ?? undefined,
+            telefone: municipio.compdec.telefone ?? undefined,
+            email: municipio.compdec.email ?? undefined,
+          }
+        : null,
+      submissoesRecentes: submissoes.map((s) => ({
+        id: s.id,
+        protocolo: s.protocolo ?? undefined,
+        status: s.status,
+        createdAt: s.criadoEm.toISOString(),
+        nomeRespondente: s.nomeRespondente ?? undefined,
+      })),
+    };
   }
 }

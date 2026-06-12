@@ -14,6 +14,7 @@ import SubmissoesPage from "../features/submissoes/SubmissoesPage";
 import SubmissaoNova from "../features/submissoes/SubmissaoNova";
 import SubmissaoDetalhe from "../features/submissoes/SubmissaoDetalhe";
 import DashboardPage from "../features/dashboard/DashboardPage";
+import CompetenciasPage from "../features/competencias/CompetenciasPage";
 import MunicipiosPage from "../features/municipios/MunicipiosPage";
 import MunicipioDetalhe from "../features/municipios/MunicipioDetalhe";
 import AdminPage from "../features/admin/AdminPage";
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
       { path: "submissoes/nova", element: <SubmissaoNova /> },
       { path: "submissoes/:id", element: <SubmissaoDetalhe /> },
       { path: "dashboard", element: <DashboardPage /> },
+      { path: "competencias", element: <CompetenciasPage /> },
       { path: "municipios", element: <MunicipiosPage /> },
       { path: "municipios/:id", element: <MunicipioDetalhe /> },
       { path: "admin", element: <AdminPage /> },

@@ -18,26 +18,37 @@ import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import LibraryAddIcon from "@mui/icons-material/LibraryAdd";
+import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
 import type { Pergunta, SecaoFormulario, TipoPergunta } from "@dcmg/contracts";
 import { TIPOS } from "./tipos";
 import { SortablePergunta } from "./SortablePergunta";
 
+interface DestinoPagina {
+  id: string;
+  titulo: string;
+}
+
 interface Props {
   secao: SecaoFormulario;
   todasPerguntas: Pergunta[];
+  /** Outras páginas para onde a seção pode ser movida. */
+  outrasPaginas: DestinoPagina[];
   onChange: (s: SecaoFormulario) => void;
   onRemover: () => void;
   onAddPergunta: (tipo: TipoPergunta) => void;
   onInserirBloco: () => void;
+  onMoverParaPagina: (paginaId: string) => void;
 }
 
 export function SortableSecao({
   secao,
   todasPerguntas,
+  outrasPaginas,
   onChange,
   onRemover,
   onAddPergunta,
   onInserirBloco,
+  onMoverParaPagina,
 }: Props) {
   const sid = secao.id!;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -50,6 +61,7 @@ export function SortableSecao({
   });
 
   const [menuEl, setMenuEl] = useState<null | HTMLElement>(null);
+  const [moverEl, setMoverEl] = useState<null | HTMLElement>(null);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -79,10 +91,29 @@ export function SortableSecao({
             sx={{ flex: 1 }}
             InputProps={{ style: { fontSize: 18, fontWeight: 600 } }}
           />
+          {outrasPaginas.length > 0 && (
+            <IconButton size="small" title="Mover para página" onClick={(e) => setMoverEl(e.currentTarget)}>
+              <DriveFileMoveIcon />
+            </IconButton>
+          )}
           <IconButton size="small" color="error" onClick={onRemover}>
             <DeleteIcon />
           </IconButton>
         </Stack>
+
+        <Menu anchorEl={moverEl} open={!!moverEl} onClose={() => setMoverEl(null)}>
+          {outrasPaginas.map((p) => (
+            <MenuItem
+              key={p.id}
+              onClick={() => {
+                onMoverParaPagina(p.id);
+                setMoverEl(null);
+              }}
+            >
+              Mover para: {p.titulo}
+            </MenuItem>
+          ))}
+        </Menu>
 
         <TextField
           value={secao.descricao ?? ""}

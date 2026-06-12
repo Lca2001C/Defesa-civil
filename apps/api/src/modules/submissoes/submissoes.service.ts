@@ -36,8 +36,20 @@ const MIME_ANEXO_PERMITIDOS = new Set([
   'application/x-zip-compressed',
   'image/png',
   'image/jpeg',
+  // Geoespaciais
+  'application/vnd.google-earth.kml+xml', // KML
+  'application/vnd.google-earth.kmz',     // KMZ
+  'application/xml',                       // KML via content-type genérico
+  'text/xml',                              // KML via content-type texto
+  'application/json',                      // GeoJSON / JSON
+  'application/octet-stream',              // SHP (sem MIME padrão)
+  'application/x-shapefile',               // SHP alternativo
 ]);
-const EXT_ANEXO_PERMITIDAS = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.zip', '.png', '.jpg', '.jpeg'];
+const EXT_ANEXO_PERMITIDAS = [
+  '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.zip', '.png', '.jpg', '.jpeg',
+  // Geoespaciais
+  '.kml', '.kmz', '.json', '.geojson', '.shp', '.dbf', '.shx', '.prj',
+];
 
 @Injectable()
 export class SubmissoesService {
@@ -468,7 +480,7 @@ export class SubmissoesService {
     dados: Record<string, unknown>,
   ): Promise<void> {
     const perguntas = await tx.pergunta.findMany({
-      where: { secao: { versaoId } },
+      where: { secao: { pagina: { versaoId } } },
       select: { id: true, codigo: true },
     });
     const mapa = new Map(perguntas.map((p) => [p.codigo, p.id]));
@@ -495,7 +507,7 @@ export class SubmissoesService {
     dados: Record<string, unknown>,
   ): Promise<void> {
     const perguntas = await tx.pergunta.findMany({
-      where: { secao: { versaoId } },
+      where: { secao: { pagina: { versaoId } } },
       select: { id: true, codigo: true },
     });
     const mapa = new Map(perguntas.map((p) => [p.codigo, p.id]));
@@ -536,7 +548,7 @@ export class SubmissoesService {
     ctx: { municipioId: number; municipioNome: string; autorNome: string; competenciaNome: string; protocolo: string },
   ): Promise<Record<string, unknown>> {
     const perguntas = await this.prisma.pergunta.findMany({
-      where: { secao: { versaoId }, tipo: TipoPergunta.AUTOMATICO },
+      where: { secao: { pagina: { versaoId } }, tipo: TipoPergunta.AUTOMATICO },
       select: { codigo: true, fonteAutomatica: true },
     });
 

@@ -2,6 +2,7 @@
 import {
   FonteAutomatica,
   TipoPergunta,
+  type PaginaFormulario,
   type Pergunta,
   type SecaoFormulario,
 } from "@dcmg/contracts";
@@ -85,7 +86,16 @@ export function criarSecao(): SecaoFormulario {
   return { id: uid("sec"), titulo: "Nova seção", perguntas: [] };
 }
 
-/** Garante que toda seção tenha um id local estável (para DnD). */
-export function normalizarIds(secoes: SecaoFormulario[]): SecaoFormulario[] {
-  return secoes.map((s) => ({ ...s, id: s.id ?? uid("sec") }));
+/** Cria uma página em branco com id local. */
+export function criarPagina(indice = 0): PaginaFormulario {
+  return { id: uid("pag"), titulo: `Página ${indice + 1}`, secoes: [] };
+}
+
+/** Garante que toda página/seção tenha um id local estável (para DnD/seleção). */
+export function normalizarPaginas(paginas: PaginaFormulario[]): PaginaFormulario[] {
+  return paginas.map((p) => ({
+    ...p,
+    id: p.id ?? uid("pag"),
+    secoes: (p.secoes ?? []).map((s) => ({ ...s, id: s.id ?? uid("sec") })),
+  }));
 }

@@ -150,7 +150,8 @@ export default function PainelPage() {
   useEffect(() => {
     statusMapRef.current.clear();
     for (const m of statusLista) {
-      statusMapRef.current.set(m.codigoIbge, m.status);
+      // A malha GeoJSON é indexada pelo código IBGE (= municipioId de 7 dígitos).
+      statusMapRef.current.set(String(m.municipioId), m.status);
     }
     // repintar layers existentes
     Object.entries(geojsonLayerRef.current).forEach(([ibge, layer]) => {

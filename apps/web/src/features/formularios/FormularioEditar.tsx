@@ -66,7 +66,7 @@ export default function FormularioEditar() {
       setErro(null);
       queryClient.invalidateQueries({ queryKey: ["formularios"] });
       // Se uma nova versão foi criada (formulário publicado com respostas), navega para ela.
-      if (resp.id !== versaoId) {
+      if (resp.id && resp.id !== versaoId) {
         navigate(`/formularios/${id}/versoes/${resp.id}/editar`, { replace: true });
       } else {
         queryClient.invalidateQueries({ queryKey: ["versao-editar", id, versaoId] });
