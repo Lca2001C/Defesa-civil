@@ -84,6 +84,47 @@ export class StorageService {
     });
   }
 
+  /**
+   * Persiste um arquivo já existente em disco (caminho temporário), sem carregá-lo
+   * inteiro em memória. Ideal para artefatos grandes gerados em streaming (ex.: export Excel).
+   */
+  async salvarDeCaminho(
+    caminhoTmp: string,
+    nomeOriginal: string,
+    mimeType?: string,
+  ): Promise<Arquivo> {
+    const chave = `${randomUUID()}-${nomeOriginal.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
+    const { size } = await fs.promises.stat(caminhoTmp);
+
+    if (this.driver === 'local') {
+      await fs.promises.mkdir(this.localPath, { recursive: true });
+      const destino = path.join(this.localPath, chave);
+      await fs.promises.copyFile(caminhoTmp, destino);
+    } else if (this.driver === 's3') {
+      await this.s3!.send(
+        new PutObjectCommand({
+          Bucket: this.s3Bucket,
+          Key: chave,
+          Body: fs.createReadStream(caminhoTmp),
+          ContentType: mimeType,
+          ContentLength: size,
+        }),
+      );
+    } else {
+      throw new InternalServerErrorException(`Driver de storage desconhecido: ${this.driver}`);
+    }
+
+    return this.prisma.arquivo.create({
+      data: {
+        chave,
+        nomeOriginal,
+        mimeType,
+        tamanhoBytes: size,
+        driver: this.driver,
+      },
+    });
+  }
+
   async ler(chave: string): Promise<Buffer> {
     const driver = await this.detectarDriver(chave);
 

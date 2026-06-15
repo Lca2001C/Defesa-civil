@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { RealtimeGateway } from './realtime.gateway';
 import { AuthModule } from '../auth/auth.module';
+import { PainelModule } from '../painel/painel.module';
 
 @Module({
-  imports: [AuthModule], // para injetar JwtService no gateway
+  imports: [AuthModule, PainelModule], // JwtService + PainelService no gateway
   providers: [RealtimeGateway],
   exports: [RealtimeGateway],
 })

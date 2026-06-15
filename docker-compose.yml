@@ -64,6 +64,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Override do DSN para a rede interna do Docker (precedencia sobre env_file).
+      # Mantem o .env com localhost para o Prisma rodando no host (migrations).
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,9 +120,16 @@ services:
     restart: unless-stopped
     profiles:
       - tunnel
-    command: ["http", "web:8080"]
+    # Usa o arquivo de config para forcar o inspector em 0.0.0.0:4040 (acessivel
+    # pelo host) e definir o tunel HTTP para o web (nginx). O authtoken vem do env.
+    command: ["start", "--all", "--config", "/etc/ngrok/ngrok.yml"]
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    volumes:
+      - ./infra/ngrok/ngrok.yml:/etc/ngrok/ngrok.yml:ro
+    # Publica o inspector (Web UI / API local) para o script ler a URL publica.
+    ports:
+      - "4040:4040"
     depends_on:
       - web
     networks:

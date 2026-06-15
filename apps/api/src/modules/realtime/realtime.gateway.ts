@@ -7,11 +7,15 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/env.validation';
+import { PainelService } from '../painel/painel.service';
+
+/** Janela mínima entre broadcasts de stats por competência (anti-tempestade). */
+const STATS_THROTTLE_MS = 3000;
 
 export interface StatusMunicipioEvento {
   municipioId: number;
@@ -32,9 +36,13 @@ export class RealtimeGateway
 
   private readonly logger = new Logger(RealtimeGateway.name);
 
+  /** Timers pendentes de broadcast de stats por competência (throttle). */
+  private readonly timersStats = new Map<string, NodeJS.Timeout>();
+
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService<Env, true>,
+    private readonly painel: PainelService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -90,5 +98,24 @@ export class RealtimeGateway
   emitirStats(competenciaId: string, stats: Record<string, number>) {
     const room = `painel:${competenciaId}`;
     this.server.to(room).emit('painel:stats', { competenciaId, ...stats });
+  }
+
+  /**
+   * Agenda um broadcast de stats da competência com throttle: várias transições
+   * em sequência resultam em no máximo uma emissão a cada STATS_THROTTLE_MS.
+   * O recompute usa o cache do PainelService (barato).
+   */
+  agendarBroadcastStats(competenciaId: string) {
+    if (this.timersStats.has(competenciaId)) return; // já há um broadcast agendado
+
+    const timer = setTimeout(() => {
+      this.timersStats.delete(competenciaId);
+      void this.painel
+        .buscarEstatisticas(competenciaId)
+        .then((stats) => this.emitirStats(competenciaId, stats))
+        .catch((e) => this.logger.warn(`Falha ao emitir stats: ${(e as Error).message}`));
+    }, STATS_THROTTLE_MS);
+
+    this.timersStats.set(competenciaId, timer);
   }
 }

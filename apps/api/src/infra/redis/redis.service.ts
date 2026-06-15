@@ -53,4 +53,45 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const resposta = await this.client.ping();
     return resposta === 'PONG';
   }
+
+  // ── Abstração de cache (JSON) ──────────────────────────────────────────────
+
+  /** Lê um valor JSON do cache. Retorna null se ausente ou inválido. */
+  async cacheGet<T>(chave: string): Promise<T | null> {
+    const bruto = await this.client.get(chave);
+    if (!bruto) return null;
+    try {
+      return JSON.parse(bruto) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Grava um valor JSON no cache com TTL em segundos. */
+  async cacheSet(chave: string, valor: unknown, ttlSeg: number): Promise<void> {
+    await this.client.setex(chave, ttlSeg, JSON.stringify(valor));
+  }
+
+  /**
+   * Remove todas as chaves que começam com o prefixo informado.
+   * Usa SCAN (não KEYS) para não bloquear o Redis em bases grandes.
+   */
+  async cacheDelPorPrefixo(prefixo: string): Promise<void> {
+    const stream = this.client.scanStream({ match: `${prefixo}*`, count: 100 });
+    const pipeline = this.client.pipeline();
+    let pendentes = 0;
+
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (chaves: string[]) => {
+        for (const chave of chaves) {
+          pipeline.del(chave);
+          pendentes++;
+        }
+      });
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
+
+    if (pendentes > 0) await pipeline.exec();
+  }
 }

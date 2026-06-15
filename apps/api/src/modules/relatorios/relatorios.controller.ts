@@ -1,43 +1,71 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { SubmissaoStatus } from '@prisma/client';
 import { Permissao } from '../../common/decorators/permissao.decorator';
+import { UsuarioAtual } from '../../common/decorators/usuario-atual.decorator';
+import type { JwtPayload } from '../../common/types/jwt-payload';
 import { RelatoriosService } from './relatorios.service';
+import { StorageService } from '../../infra/storage/storage.service';
 
 @ApiBearerAuth()
 @ApiTags('relatorios')
 @Controller('relatorios')
 export class RelatoriosController {
-  constructor(private readonly service: RelatoriosService) {}
+  constructor(
+    private readonly service: RelatoriosService,
+    private readonly storage: StorageService,
+  ) {}
 
-  @Get('submissoes/export')
+  @Post('submissoes/export')
   @Permissao('relatorios.exportar')
-  @ApiOperation({ summary: 'Exporta submissões em Excel (.xlsx) com protocolo.' })
+  @ApiOperation({ summary: 'Enfileira a exportação de submissões em Excel (job assíncrono).' })
   @ApiQuery({ name: 'competenciaId', required: true })
   @ApiQuery({ name: 'status', required: false, enum: SubmissaoStatus })
   @ApiQuery({ name: 'municipioId', required: false, type: Number })
   @ApiQuery({ name: 'regionalId', required: false })
-  async exportar(
+  async enfileirar(
+    @UsuarioAtual() usuario: JwtPayload,
     @Query('competenciaId') competenciaId: string,
     @Query('status') status?: SubmissaoStatus,
     @Query('municipioId') municipioId?: string,
     @Query('regionalId') regionalId?: string,
-    @Res() res?: Response,
-  ) {
-    const buffer = await this.service.exportarSubmissoes({
-      competenciaId,
-      status,
-      municipioId: municipioId ? Number(municipioId) : undefined,
-      regionalId,
-    });
+  ): Promise<{ jobId: string }> {
+    const jobId = await this.service.enfileirarExport(
+      {
+        competenciaId,
+        status,
+        municipioId: municipioId ? Number(municipioId) : undefined,
+        regionalId,
+      },
+      usuario.sub,
+    );
+    return { jobId };
+  }
 
-    const nome = `submissoes_${competenciaId}_${Date.now()}.xlsx`;
-    res!.set({
+  @Get('export/:jobId')
+  @Permissao('relatorios.exportar')
+  @ApiOperation({ summary: 'Consulta o estado de um job de exportação.' })
+  consultar(@Param('jobId') jobId: string) {
+    return this.service.consultarJob(jobId);
+  }
+
+  @Get('export/:jobId/download')
+  @Permissao('relatorios.exportar')
+  @ApiOperation({ summary: 'Faz o download do Excel gerado por um job concluído.' })
+  async download(@Param('jobId') jobId: string, @Res() res: Response) {
+    const { estado, resultado } = await this.service.consultarJob(jobId);
+    if (estado !== 'completed' || !resultado) {
+      res.status(409).json({ message: `Export ainda não disponível (estado: ${estado}).` });
+      return;
+    }
+
+    const buffer = await this.storage.ler(resultado.chave);
+    res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${nome}"`,
+      'Content-Disposition': `attachment; filename="${resultado.nome}"`,
       'Content-Length': buffer.length,
     });
-    res!.end(buffer);
+    res.end(buffer);
   }
 }

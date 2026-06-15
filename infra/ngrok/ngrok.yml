@@ -1,0 +1,10 @@
+# Config do agente ngrok (usado pelo serviço "ngrok" do docker-compose, profile tunnel).
+# O authtoken NÃO fica aqui — é lido da variável de ambiente NGROK_AUTHTOKEN.
+# web_addr em 0.0.0.0 expõe o inspector/API local (porta 4040) para fora do container,
+# permitindo que o start-dev.ps1 leia a URL pública via http://localhost:4040/api/tunnels.
+version: "2"
+web_addr: 0.0.0.0:4040
+tunnels:
+  web:
+    addr: web:8080
+    proto: http

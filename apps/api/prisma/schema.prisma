@@ -454,8 +454,11 @@ model Submissao {
   @@index([competenciaId])
   @@index([formularioVersaoId])
   @@index([status])
+  @@index([autorId])
   @@index([municipioId, competenciaId])
   @@index([municipioId, formularioVersaoId, competenciaId])
+  @@index([competenciaId, criadoEm])
+  @@index([competenciaId, status])
   @@map("submissoes")
 }
 

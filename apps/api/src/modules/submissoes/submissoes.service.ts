@@ -13,10 +13,12 @@ import {
   TipoPergunta,
 } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { RedisService } from '../../infra/redis/redis.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { FormulariosService } from '../formularios/formularios.service';
 import { StorageService } from '../../infra/storage/storage.service';
 import { NotificacoesService } from '../notificacoes/notificacoes.service';
+import { prefixoCachePainel } from '../painel/painel.service';
 import type { PaginacaoDto } from '../../common/dto/paginacao.dto';
 import type { JwtPayload } from '../../common/types/jwt-payload';
 import type { CriarSubmissaoDto } from './dto/criar-submissao.dto';
@@ -59,6 +61,7 @@ export class SubmissoesService {
     private readonly notificacoes: NotificacoesService,
     private readonly formularios: FormulariosService,
     private readonly storage: StorageService,
+    private readonly redis: RedisService,
   ) {}
 
   // ------------------------------------------------------------------ criar --
@@ -210,7 +213,10 @@ export class SubmissoesService {
         autor: { select: { nome: true, email: true } },
         respostas: { select: { perguntaCodigo: true, valor: true } },
         historico: {
-          orderBy: { criadoEm: 'asc' },
+          // Limita ao histórico mais recente para não carregar trilhas longas
+          // em submissões antigas (a UI mostra os últimos eventos).
+          orderBy: { criadoEm: 'desc' },
+          take: 30,
           include: { autor: { select: { nome: true } } },
         },
         anexos: { include: { arquivo: true }, orderBy: { criadoEm: 'desc' } },
@@ -219,11 +225,14 @@ export class SubmissoesService {
     if (!sub) throw new NotFoundException('Submissão não encontrada.');
     this.verificarEscopo(sub, usuario);
 
+    // Buscamos os 30 mais recentes (desc); reordenamos asc para exibição cronológica.
+    const historico = [...sub.historico].reverse();
+
     const schema = await this.formularios.comporSchema(sub.formularioVersaoId);
     const dados: Record<string, unknown> = {};
     for (const r of sub.respostas) dados[r.perguntaCodigo] = r.valor;
 
-    return { ...sub, schema, dados };
+    return { ...sub, historico, schema, dados };
   }
 
   // ---------------------------------------------------------------- atualizar --
@@ -445,7 +454,12 @@ export class SubmissoesService {
   }
 
   private emitirStatus(municipioId: number, competenciaId: string, status: StatusMapa, protocolo?: string) {
+    // Invalida o cache do painel desta competência (status/stats) — o próximo
+    // request recalcula com os dados atualizados.
+    void this.redis.cacheDelPorPrefixo(prefixoCachePainel(competenciaId));
     this.realtime.emitirStatusUpdate({ municipioId, competenciaId, status, protocolo });
+    // Broadcast de stats com throttle (no máx. 1 a cada 3s por competência).
+    this.realtime.agendarBroadcastStats(competenciaId);
   }
 
   private notificar(

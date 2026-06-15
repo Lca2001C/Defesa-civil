@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import compression from 'compression';
 import { AppModule } from './app.module';
 import type { Env } from './config/env.validation';
 import { PrismaService } from './infra/prisma/prisma.service';
@@ -27,6 +28,9 @@ async function bootstrap(): Promise<void> {
 
   // Seguranca de cabecalhos HTTP.
   app.use(helmet());
+
+  // Compressao gzip das respostas (painel/status, dashboard, listas grandes).
+  app.use(compression());
 
   // CORS: converte a lista CSV em array; vazio => libera todas as origens.
   const origens = corsOrigins

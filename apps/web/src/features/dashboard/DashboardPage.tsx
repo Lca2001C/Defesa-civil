@@ -146,17 +146,37 @@ export default function DashboardPage() {
     if (!competenciaId) return;
     setExportando(true);
     try {
+      // 1) Enfileira o job de exportação
+      const { jobId } = await api.post<{ jobId: string }>(
+        `/relatorios/submissoes/export?competenciaId=${competenciaId}`,
+      );
+
+      // 2) Polling do estado do job (~1,5s)
+      const aguardar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      for (let tentativa = 0; tentativa < 200; tentativa++) {
+        const status = await api.get<{ estado: string; progresso: number }>(
+          `/relatorios/export/${jobId}`,
+        );
+        if (status.estado === "completed") break;
+        if (status.estado === "failed") throw new Error("A geração do relatório falhou.");
+        await aguardar(1500);
+      }
+
+      // 3) Download do arquivo pronto (com Authorization)
       const base = runtimeConfig.apiBaseUrl.replace(/\/$/, "");
       const token = getAccessToken() ?? "";
-      const url = `${base}/relatorios/submissoes/export?competenciaId=${competenciaId}`;
-      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (!resp.ok) throw new Error("Falha ao exportar");
+      const resp = await fetch(`${base}/relatorios/export/${jobId}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) throw new Error("Falha ao baixar o relatório.");
       const blob = await resp.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = `submissoes_${competenciaId}.xlsx`;
       a.click();
       URL.revokeObjectURL(a.href);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao exportar.");
     } finally {
       setExportando(false);
     }
