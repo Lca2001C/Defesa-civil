@@ -89,6 +89,23 @@ export class FormulariosService {
     return form;
   }
 
+  async excluir(id: string) {
+    const formulario = await this.prisma.formulario.findUnique({ where: { id } });
+    if (!formulario) throw new NotFoundException('Formulário não encontrado.');
+
+    const totalSubmissoes = await this.prisma.submissao.count({
+      where: { formularioVersao: { formularioId: id } },
+    });
+    if (totalSubmissoes > 0) {
+      throw new BadRequestException(
+        `Formulário possui ${totalSubmissoes} submissão(ões) vinculada(s) e não pode ser excluído.`,
+      );
+    }
+
+    await this.prisma.formularioVersao.deleteMany({ where: { formularioId: id } });
+    await this.prisma.formulario.delete({ where: { id } });
+  }
+
   async atualizar(id: string, dto: AtualizarFormularioDto) {
     await this.buscarPorId(id);
     return this.prisma.formulario.update({

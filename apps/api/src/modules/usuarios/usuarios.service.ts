@@ -100,6 +100,43 @@ export class UsuariosService {
     };
   }
 
+  async buscarMe(usuarioId: string) {
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        cpf: true,
+        cargo: true,
+        telefone: true,
+        escopo: true,
+        ativo: true,
+        ultimoAcessoEm: true,
+        criadoEm: true,
+        perfil: { select: { nome: true, codigo: true, nivel: true } },
+        municipio: { select: { id: true, nome: true } },
+        regional: { select: { nome: true } },
+        uf: { select: { sigla: true } },
+        _count: { select: { submissoes: true } },
+      },
+    });
+    if (!usuario) throw new NotFoundException('Usuário não encontrado');
+    return { ...usuario, cpf: mascaraCpf(usuario.cpf) };
+  }
+
+  async atualizarMe(usuarioId: string, dto: { nome?: string; cargo?: string; telefone?: string }) {
+    const data: { nome?: string; cargo?: string; telefone?: string } = {};
+    if (dto.nome !== undefined) data.nome = dto.nome;
+    if (dto.cargo !== undefined) data.cargo = dto.cargo;
+    if (dto.telefone !== undefined) data.telefone = dto.telefone;
+    return this.prisma.usuario.update({
+      where: { id: usuarioId },
+      data,
+      select: { id: true, nome: true, cargo: true, telefone: true },
+    });
+  }
+
   async listar(filtros?: { municipioId?: number; regionalId?: string; ativo?: boolean }) {
     return this.prisma.usuario.findMany({
       where: {
@@ -247,6 +284,33 @@ export class UsuariosService {
     const senhaHash = await argon2.hash(novaSenha, { type: argon2.argon2id });
     await this.prisma.usuario.update({ where: { id }, data: { senhaHash } });
     return { mensagem: 'Senha redefinida com sucesso.' };
+  }
+
+  async excluir(id: string, usuario: JwtPayload) {
+    if (id === usuario.sub) {
+      throw new BadRequestException('Você não pode excluir sua própria conta.');
+    }
+
+    const alvo = await this.buscarOuFalhar(id);
+
+    const perfil = await this.prisma.perfil.findUnique({ where: { id: alvo.perfilId } });
+    if (perfil?.codigo === 'SUPER_ADMIN') {
+      const totalSuperAdmin = await this.prisma.usuario.count({
+        where: { perfil: { codigo: 'SUPER_ADMIN' }, ativo: true },
+      });
+      if (totalSuperAdmin <= 1) {
+        throw new BadRequestException('Não é possível excluir o único SUPER_ADMIN ativo do sistema.');
+      }
+    }
+
+    const totalSubmissoes = await this.prisma.submissao.count({ where: { autorId: id } });
+    if (totalSubmissoes > 0) {
+      throw new BadRequestException(
+        `Usuário possui ${totalSubmissoes} submissão(ões) vinculada(s). Exclua as submissões antes de remover o usuário.`,
+      );
+    }
+
+    await this.prisma.usuario.delete({ where: { id } });
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

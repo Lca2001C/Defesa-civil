@@ -59,4 +59,8 @@ export class RegistrarDto {
   @ApiProperty({ description: 'Deve ser true — usuário confirmou leitura dos termos.' })
   @IsBoolean()
   aceiteTermoLgpd!: boolean;
+
+  @ApiProperty({ description: 'Informa se o usuário é o Coordenador da COMPDEC do seu município.' })
+  @IsBoolean()
+  ehCoordenadorCompdec!: boolean;
 }

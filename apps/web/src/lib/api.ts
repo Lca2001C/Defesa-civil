@@ -123,4 +123,6 @@ export const api = {
     requisitar<T>("PATCH", path, body, init),
   del: <T>(path: string, init?: RequestInit) =>
     requisitar<T>("DELETE", path, undefined, init),
+  delete: <T>(path: string, init?: RequestInit) =>
+    requisitar<T>("DELETE", path, undefined, init),
 };

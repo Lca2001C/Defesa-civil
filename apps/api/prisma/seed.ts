@@ -150,6 +150,20 @@ const PERFIS: PerfilCatalogo[] = [
     ],
   },
   {
+    // Perfil atribuído automaticamente quando o usuário declara ser Coordenador
+    // de COMPDEC. Tem acesso básico (igual ao Operador Municipal) — permissões
+    // elevadas (revisar, validar, gerenciar) são concedidas pelo SUPER_ADMIN.
+    codigo: "COORDENADOR_COMPDEC",
+    nome: "Coordenador COMPDEC",
+    nivel: 25,
+    permissoes: [
+      "painel.ver",
+      "submissoes.criar",
+      "submissoes.editar",
+      "relatorios.exportar",
+    ],
+  },
+  {
     codigo: "CONSULTA",
     nome: "Consulta (somente leitura)",
     nivel: 10,
@@ -517,14 +531,8 @@ async function semearCompetencia(): Promise<boolean> {
 
 async function semearTermoLgpd(): Promise<boolean> {
   const versao = "1.0";
-  const jaExiste = await prisma.termoLgpd.findUnique({ where: { versao } });
-  if (jaExiste) return false;
 
-  await prisma.termoLgpd.create({
-    data: {
-      versao,
-      ativo: true,
-      conteudo: `
+  const conteudo = `
 **TERMOS DE USO E POLÍTICA DE PRIVACIDADE**
 **Plataforma SIG-COMPDEC MG — Versão ${versao}**
 
@@ -558,10 +566,27 @@ Nos termos da LGPD, você pode solicitar ao Encarregado (DPO): confirmação do 
 **8. Contato com o Encarregado (DPO)**
 Dúvidas e solicitações podem ser encaminhadas para o canal oficial da CEDEC-MG.
 
-**9. Aceitação**
-Ao marcar a opção "Li e aceito os Termos de Uso e Política de Privacidade", você confirma ter lido este documento na íntegra e concorda com o tratamento dos seus dados conforme descrito acima. O registro deste aceite (data, IP e versão do termo) é armazenado para fins de comprovação.
-      `.trim(),
-    },
+**9. Responsabilidade pelo Uso da Plataforma**
+Ao utilizar a Plataforma SIG-COMPDEC MG, o usuário assume as seguintes responsabilidades:
+
+9.1. O usuário é integralmente responsável pela veracidade, exatidão e completude de todas as informações fornecidas no cadastro e nas submissões realizadas em nome do município.
+
+9.2. O usuário que se cadastrar como Coordenador de COMPDEC declara, sob sua responsabilidade pessoal, que exerce ou está devidamente autorizado a exercer tal função no município indicado, respondendo civil e administrativamente por declarações falsas, conforme o art. 299 do Código Penal (falsidade ideológica) e o art. 11 da Lei nº 8.429/1992 (improbidade administrativa).
+
+9.3. É vedado o compartilhamento de credenciais de acesso (login e senha). Cada acesso é pessoal e intransferível. O usuário responderá por todos os atos praticados com suas credenciais.
+
+9.4. O uso indevido da plataforma para inserção de dados falsos, manipulação de informações ou acesso não autorizado sujeita o usuário às sanções previstas na legislação civil, penal e administrativa vigente.
+
+9.5. A CEDEC-MG reserva-se o direito de suspender ou cancelar o acesso de usuários que violem estes Termos, sem prejuízo das demais medidas legais cabíveis.
+
+**10. Aceitação**
+Ao clicar em "Li e aceito os Termos", você confirma ter lido este documento na íntegra, compreende e concorda com todas as condições aqui estabelecidas, incluindo a responsabilidade pessoal pelas informações fornecidas. O registro deste aceite (data, hora, IP e versão do termo) é armazenado para fins de comprovação legal.
+  `.trim();
+
+  await prisma.termoLgpd.upsert({
+    where: { versao },
+    create: { versao, ativo: true, conteudo },
+    update: { conteudo },
   });
 
   return true;

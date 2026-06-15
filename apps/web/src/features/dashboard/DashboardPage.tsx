@@ -26,6 +26,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import { api } from "../../lib/api";
 import { runtimeConfig } from "../../lib/runtimeConfig";
 import { getAccessToken } from "../../lib/auth";
+import { useAuth } from "../../lib/auth-context";
 import { cores } from "../../theme/tokens";
 
 // ── tipos ─────────────────────────────────────────────────────────────────────
@@ -99,6 +100,8 @@ function barra(valor: number, total: number, cor: string) {
 // ── componente ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { usuario } = useAuth();
+  const isSuperAdmin = usuario?.perfilCodigo === "SUPER_ADMIN";
   const [competenciaId, setCompetenciaId] = useState("");
   const [exportando, setExportando] = useState(false);
 
@@ -233,30 +236,32 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             ))}
-            <Card sx={{ flex: "1 1 160px", minWidth: 140 }}>
-              <CardContent sx={{ py: 2 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Cobertura estadual
-                </Typography>
-                <Typography
-                  variant="h3"
-                  sx={{ fontWeight: 700, color: cores.laranjaPrimario, mt: 0.5 }}
-                >
-                  {resumo.percentualCobertura.toFixed(1)}%
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={resumo.percentualCobertura}
-                  sx={{
-                    mt: 1,
-                    height: 6,
-                    borderRadius: 3,
-                    bgcolor: "rgba(148,163,184,.15)",
-                    "& .MuiLinearProgress-bar": { bgcolor: cores.laranjaPrimario },
-                  }}
-                />
-              </CardContent>
-            </Card>
+            {isSuperAdmin && (
+              <Card sx={{ flex: "1 1 160px", minWidth: 140 }}>
+                <CardContent sx={{ py: 2 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Cobertura estadual
+                  </Typography>
+                  <Typography
+                    variant="h3"
+                    sx={{ fontWeight: 700, color: cores.laranjaPrimario, mt: 0.5 }}
+                  >
+                    {resumo.percentualCobertura.toFixed(1)}%
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={resumo.percentualCobertura}
+                    sx={{
+                      mt: 1,
+                      height: 6,
+                      borderRadius: 3,
+                      bgcolor: "rgba(148,163,184,.15)",
+                      "& .MuiLinearProgress-bar": { bgcolor: cores.laranjaPrimario },
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            )}
           </Stack>
 
           {/* linha: por regional + por formulário */}

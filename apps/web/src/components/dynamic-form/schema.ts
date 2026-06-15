@@ -147,6 +147,11 @@ function validadorCampo(campo: Pergunta): z.ZodTypeAny {
       break;
 
     case TipoPergunta.UPLOAD:
+      base = obrigatorio
+        ? z.string().min(1, "Arquivo obrigatório.")
+        : z.string().optional().or(z.literal(""));
+      break;
+
     case TipoPergunta.AUTOMATICO:
       base = z.any().optional();
       break;

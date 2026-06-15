@@ -23,6 +23,7 @@ const PERFIS = [
   { codigo: "COORDENADOR_REGIONAL", label: "Coordenador Regional" },
   { codigo: "ADMIN_MUNICIPAL", label: "Administrador Municipal" },
   { codigo: "OPERADOR_MUNICIPAL", label: "Operador Municipal" },
+  { codigo: "COORDENADOR_COMPDEC", label: "Coordenador COMPDEC (aguardando aprovação)" },
   { codigo: "CONSULTA", label: "Consulta" },
 ];
 

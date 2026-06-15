@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -68,6 +71,14 @@ export class FormulariosController {
   @ApiOperation({ summary: 'Retorna um formulário e o resumo de suas versões.' })
   buscarPorId(@Param('id') id: string) {
     return this.service.buscarPorId(id);
+  }
+
+  @Delete(':id')
+  @Permissao('formularios.criar')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Exclui um formulário e todas as suas versões (bloqueado se houver submissões).' })
+  excluir(@Param('id') id: string) {
+    return this.service.excluir(id);
   }
 
   @Patch(':id')

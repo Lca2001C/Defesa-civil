@@ -171,6 +171,11 @@ export class SubmissoesService {
       where.municipio = { regionalId: usuario.regionalId };
     }
 
+    // Usuários abaixo de ADMIN_MUNICIPAL (nivel < 50) só visualizam as próprias submissões.
+    if (usuario.perfilNivel < 50) {
+      where.autorId = usuario.sub;
+    }
+
     const [items, total] = await Promise.all([
       this.prisma.submissao.findMany({
         where,
@@ -362,6 +367,21 @@ export class SubmissoesService {
       data: { submissaoId: id, arquivoId: arq.id, perguntaCodigo: perguntaCodigo ?? null },
       include: { arquivo: true },
     });
+  }
+
+  async excluir(id: string, usuario: JwtPayload) {
+    const sub = await this.carregarParaEscopo(id, usuario);
+
+    const podeExcluirQualquer = usuario.perfilNivel >= 80;
+    const statusPermitidos: string[] = [SubmissaoStatus.RASCUNHO, SubmissaoStatus.EM_PREENCHIMENTO];
+
+    if (!podeExcluirQualquer && !statusPermitidos.includes(sub.status)) {
+      throw new BadRequestException(
+        `Submissões com status "${sub.status}" não podem ser excluídas. Apenas RASCUNHO e EM_PREENCHIMENTO são permitidos.`,
+      );
+    }
+
+    await this.prisma.submissao.delete({ where: { id } });
   }
 
   async removerAnexo(id: string, anexoId: string, usuario: JwtPayload) {

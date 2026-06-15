@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Alert,
   Box,
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   FormControl,
   InputLabel,
   MenuItem,
@@ -23,6 +29,7 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import BlockIcon from "@mui/icons-material/Block";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import UsuarioFormDialog from "./UsuarioFormDialog";
@@ -35,7 +42,7 @@ interface Usuario {
   cargo: string | null;
   escopo: string;
   ativo: boolean;
-  perfil: { nome: string; codigo: string };
+  perfil: { nome: string; codigo: string; nivel: number };
   municipio: { nome: string } | null;
   regional: { nome: string } | null;
 }
@@ -50,6 +57,8 @@ export default function UsuariosTab() {
   const [ativoFiltro, setAtivoFiltro] = useState<string>("true");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [excluindoUsuario, setExcluindoUsuario] = useState<Usuario | null>(null);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
   const { data: usuarios = [], isLoading } = useQuery<Usuario[]>({
     queryKey: ["usuarios", ativoFiltro],
@@ -61,6 +70,19 @@ export default function UsuariosTab() {
     mutationFn: ({ id, acao }: { id: string; acao: "ativar" | "desativar" }) =>
       api.patch(`/usuarios/${id}/${acao}`, {}),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["usuarios"] }),
+  });
+
+  const mutarExcluir = useMutation({
+    mutationFn: (id: string) => api.delete(`/usuarios/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["usuarios"] });
+      setExcluindoUsuario(null);
+      setErroExclusao(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Erro ao excluir usuário.";
+      setErroExclusao(msg);
+    },
   });
 
   function abrirCriar() {
@@ -144,7 +166,12 @@ export default function UsuariosTab() {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip label={u.perfil.nome} size="small" variant="outlined" />
+                    <Chip
+                      label={u.perfil.nome}
+                      size="small"
+                      variant="outlined"
+                      color={u.perfil.codigo === "COORDENADOR_COMPDEC" ? "warning" : "default"}
+                    />
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2">{u.escopo}</Typography>
@@ -164,33 +191,37 @@ export default function UsuariosTab() {
                   <TableCell align="center">
                     <Stack direction="row" spacing={0.5} justifyContent="center">
                       <Tooltip title="Editar">
-                        <Button
-                          size="small"
-                          onClick={() => abrirEditar(u.id)}
-                        >
+                        <Button size="small" onClick={() => abrirEditar(u.id)}>
                           <EditIcon fontSize="small" />
                         </Button>
                       </Tooltip>
                       {u.id !== usuarioAtual?.sub && (
-                        <Tooltip title={u.ativo ? "Desativar" : "Ativar"}>
-                          <Button
-                            size="small"
-                            color={u.ativo ? "error" : "success"}
-                            disabled={mutarStatus.isPending}
-                            onClick={() =>
-                              mutarStatus.mutate({
-                                id: u.id,
-                                acao: u.ativo ? "desativar" : "ativar",
-                              })
-                            }
-                          >
-                            {u.ativo ? (
-                              <BlockIcon fontSize="small" />
-                            ) : (
-                              <CheckCircleIcon fontSize="small" />
-                            )}
-                          </Button>
-                        </Tooltip>
+                        <>
+                          <Tooltip title={u.ativo ? "Desativar" : "Ativar"}>
+                            <Button
+                              size="small"
+                              color={u.ativo ? "error" : "success"}
+                              disabled={mutarStatus.isPending}
+                              onClick={() =>
+                                mutarStatus.mutate({
+                                  id: u.id,
+                                  acao: u.ativo ? "desativar" : "ativar",
+                                })
+                              }
+                            >
+                              {u.ativo ? <BlockIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
+                            </Button>
+                          </Tooltip>
+                          <Tooltip title="Excluir permanentemente">
+                            <Button
+                              size="small"
+                              color="error"
+                              onClick={() => { setExcluindoUsuario(u); setErroExclusao(null); }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </Button>
+                          </Tooltip>
+                        </>
                       )}
                     </Stack>
                   </TableCell>
@@ -213,6 +244,38 @@ export default function UsuariosTab() {
         onClose={() => setDialogOpen(false)}
         usuarioId={editandoId}
       />
+
+      <Dialog
+        open={!!excluindoUsuario}
+        onClose={() => { setExcluindoUsuario(null); setErroExclusao(null); }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Excluir usuário?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Você está prestes a excluir permanentemente o usuário{" "}
+            <strong>{excluindoUsuario?.nome}</strong> ({excluindoUsuario?.email}).
+            Esta ação não pode ser desfeita.
+          </DialogContentText>
+          {erroExclusao && (
+            <Alert severity="error" sx={{ mt: 2 }}>{erroExclusao}</Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setExcluindoUsuario(null); setErroExclusao(null); }}>
+            Cancelar
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={mutarExcluir.isPending}
+            onClick={() => excluindoUsuario && mutarExcluir.mutate(excluindoUsuario.id)}
+          >
+            {mutarExcluir.isPending ? <CircularProgress size={18} color="inherit" /> : "Excluir"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

@@ -1,4 +1,5 @@
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -6,15 +7,23 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
   Select,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import AssignmentIcon from "@mui/icons-material/Assignment";
-import { useQuery } from "@tanstack/react-query";
+import DeleteIcon from "@mui/icons-material/Delete";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
@@ -57,11 +66,29 @@ const LABEL_STATUS: Record<string, string> = {
   APROVADO: "Aprovado",
 };
 
+const STATUS_EXCLUIVEIS = new Set(["RASCUNHO", "EM_PREENCHIMENTO"]);
+
 export default function SubmissoesPage() {
   const navigate = useNavigate();
   const { usuario } = useAuth();
+  const qc = useQueryClient();
   const podeCriar = usuario?.permissoes.includes("submissoes.criar") ?? false;
+  const isAdmin = (usuario?.perfilNivel ?? 0) >= 80;
   const [statusFiltro, setStatusFiltro] = useState("");
+  const [excluindo, setExcluindo] = useState<Submissao | null>(null);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
+
+  const mutarExcluir = useMutation({
+    mutationFn: (id: string) => api.delete(`/submissoes/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["submissoes"] });
+      setExcluindo(null);
+      setErroExclusao(null);
+    },
+    onError: (err: unknown) => {
+      setErroExclusao(err instanceof Error ? err.message : "Erro ao excluir submissão.");
+    },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["submissoes", statusFiltro],
@@ -120,36 +147,82 @@ export default function SubmissoesPage() {
       )}
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-        {data?.items.map((s) => (
-          <Card key={s.id}>
-            <CardActionArea onClick={() => navigate(`/submissoes/${s.id}`)}>
-              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    {s.formularioVersao.formulario.nome}{" "}
-                    <Typography component="span" variant="caption" color="text.secondary">
-                      v{s.formularioVersao.versao}
-                    </Typography>
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {s.municipio.nome} · {s.nomeRespondente}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Protocolo: <strong>{s.protocolo}</strong>
-                    {s.enviadoEm &&
-                      ` · Enviado em ${new Date(s.enviadoEm).toLocaleDateString("pt-BR")}`}
-                  </Typography>
-                </Box>
-                <Chip
-                  label={LABEL_STATUS[s.status] ?? s.status}
-                  color={COR_STATUS[s.status] ?? "default"}
-                  size="small"
-                />
-              </CardContent>
-            </CardActionArea>
-          </Card>
-        ))}
+        {data?.items.map((s) => {
+          const podeExcluir = isAdmin || STATUS_EXCLUIVEIS.has(s.status);
+          return (
+            <Card key={s.id}>
+              <Box sx={{ display: "flex", alignItems: "stretch" }}>
+                <CardActionArea onClick={() => navigate(`/submissoes/${s.id}`)} sx={{ flex: 1 }}>
+                  <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        {s.formularioVersao.formulario.nome}{" "}
+                        <Typography component="span" variant="caption" color="text.secondary">
+                          v{s.formularioVersao.versao}
+                        </Typography>
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {s.municipio.nome} · {s.nomeRespondente}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Protocolo: <strong>{s.protocolo}</strong>
+                        {s.enviadoEm &&
+                          ` · Enviado em ${new Date(s.enviadoEm).toLocaleDateString("pt-BR")}`}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={LABEL_STATUS[s.status] ?? s.status}
+                      color={COR_STATUS[s.status] ?? "default"}
+                      size="small"
+                    />
+                  </CardContent>
+                </CardActionArea>
+                {podeExcluir && (
+                  <Box sx={{ display: "flex", alignItems: "center", px: 1 }}>
+                    <Tooltip title="Excluir submissão">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => { setExcluindo(s); setErroExclusao(null); }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                )}
+              </Box>
+            </Card>
+          );
+        })}
       </Box>
+
+      <Dialog
+        open={!!excluindo}
+        onClose={() => { setExcluindo(null); setErroExclusao(null); }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Excluir submissão?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Excluir a submissão do formulário{" "}
+            <strong>{excluindo?.formularioVersao.formulario.nome}</strong> do município{" "}
+            <strong>{excluindo?.municipio.nome}</strong>? Esta ação não pode ser desfeita.
+          </DialogContentText>
+          {erroExclusao && <Alert severity="error" sx={{ mt: 2 }}>{erroExclusao}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setExcluindo(null); setErroExclusao(null); }}>Cancelar</Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={mutarExcluir.isPending}
+            onClick={() => excluindo && mutarExcluir.mutate(excluindo.id)}
+          >
+            {mutarExcluir.isPending ? <CircularProgress size={18} color="inherit" /> : "Excluir"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -11,9 +11,13 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControl,
   FormControlLabel,
   FormHelperText,
+  FormLabel,
   IconButton,
+  Radio,
+  RadioGroup,
   Tab,
   Tabs,
   TextField,
@@ -122,7 +126,9 @@ function AbaCriarConta() {
     nome: "", cpf: "", email: "", senha: "", confirmarSenha: "",
     telefone: "", municipioId: "",
   });
+  const [ehCoordenador, setEhCoordenador] = useState<"sim" | "nao" | "">("");
   const [aceite, setAceite] = useState(false);
+  const [termoLido, setTermoLido] = useState(false);
   const [termoAberto, setTermoAberto] = useState(false);
   const [termo, setTermo] = useState<TermoLgpd | null>(null);
   const [carregandoTermo, setCarregandoTermo] = useState(false);
@@ -143,7 +149,10 @@ function AbaCriarConta() {
     if (form.senha.length < 8) novos.senha = "Mínimo 8 caracteres.";
     if (form.senha !== form.confirmarSenha) novos.confirmarSenha = "As senhas não conferem.";
     if (!form.telefone.trim()) novos.telefone = "Telefone é obrigatório.";
-    if (!aceite) novos.aceite = "Você deve aceitar os termos para continuar.";
+    if (!ehCoordenador) novos.ehCoordenador = "Informe se você é Coordenador de COMPDEC.";
+    if (ehCoordenador === "sim" && !form.municipioId.trim())
+      novos.municipioId = "Código IBGE é obrigatório para Coordenadores de COMPDEC.";
+    if (!termoLido) novos.aceite = "Você precisa ler e aceitar os Termos de Uso antes de continuar.";
     setErros(novos);
     return Object.keys(novos).length === 0;
   }
@@ -178,6 +187,7 @@ function AbaCriarConta() {
         telefone: form.telefone,
         aceiteTermoLgpd: true,
         versaoTermoAceito: termo?.versao ?? "1.0",
+        ehCoordenadorCompdec: ehCoordenador === "sim",
       };
       if (form.municipioId) payload.municipioId = Number(form.municipioId);
 
@@ -234,36 +244,68 @@ function AbaCriarConta() {
           required error={!!erros.telefone} helperText={erros.telefone}
         />
         <TextField
-          label="Código IBGE do município (opcional)" fullWidth size="small" sx={{ mb: 2 }}
+          label={ehCoordenador === "sim" ? "Código IBGE do município *" : "Código IBGE do município (opcional)"}
+          fullWidth size="small" sx={{ mb: 2 }}
           value={form.municipioId} onChange={(e) => set("municipioId", e.target.value.replace(/\D/g, ""))}
-          helperText="7 dígitos. Deixe em branco se não souber."
+          required={ehCoordenador === "sim"}
+          error={!!erros.municipioId} helperText={erros.municipioId || "7 dígitos."}
         />
 
-        <Box sx={{ mb: 2 }}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={aceite}
-                onChange={(e) => { setAceite(e.target.checked); setErros((v) => ({ ...v, aceite: "" })); }}
-                size="small"
-              />
-            }
-            label={
-              <Typography variant="body2">
-                Li e aceito os{" "}
-                <Typography
-                  component="span"
-                  variant="body2"
-                  sx={{ color: "primary.main", cursor: "pointer", textDecoration: "underline" }}
-                  onClick={(e) => { e.preventDefault(); void abrirTermo(); }}
-                >
-                  Termos de Uso e Política de Privacidade
-                </Typography>
-                {carregandoTermo && <CircularProgress size={12} sx={{ ml: 0.5 }} />}
+        <FormControl error={!!erros.ehCoordenador} sx={{ mb: 2, width: "100%" }}>
+          <FormLabel sx={{ fontSize: 14, mb: 0.5 }}>
+            Você é Coordenador de COMPDEC? *
+          </FormLabel>
+          <RadioGroup
+            row
+            value={ehCoordenador}
+            onChange={(e) => {
+              setEhCoordenador(e.target.value as "sim" | "nao");
+              setErros((v) => ({ ...v, ehCoordenador: "", municipioId: "" }));
+            }}
+          >
+            <FormControlLabel value="sim" control={<Radio size="small" />} label="Sim, sou Coordenador de COMPDEC" />
+            <FormControlLabel value="nao" control={<Radio size="small" />} label="Não sou Coordenador de COMPDEC" />
+          </RadioGroup>
+          {erros.ehCoordenador && <FormHelperText>{erros.ehCoordenador}</FormHelperText>}
+        </FormControl>
+
+        <Box
+          sx={{
+            mb: 2,
+            p: 1.5,
+            border: "1px solid",
+            borderColor: erros.aceite ? "error.main" : termoLido ? "success.main" : "divider",
+            borderRadius: 1,
+            backgroundColor: termoLido ? "success.50" : "transparent",
+          }}
+        >
+          {!termoLido ? (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Para finalizar o cadastro, você deve ler e aceitar os Termos de Uso e Política de Privacidade.
               </Typography>
-            }
-          />
-          {erros.aceite && <FormHelperText error>{erros.aceite}</FormHelperText>}
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => void abrirTermo()}
+                disabled={carregandoTermo}
+              >
+                {carregandoTermo
+                  ? <><CircularProgress size={14} sx={{ mr: 1 }} />Carregando…</>
+                  : "Ler Termos de Uso e Política de Privacidade"}
+              </Button>
+            </>
+          ) : (
+            <FormControlLabel
+              control={<Checkbox checked size="small" disabled />}
+              label={
+                <Typography variant="body2" color="success.dark" sx={{ fontWeight: 500 }}>
+                  Termos lidos e aceitos
+                </Typography>
+              }
+            />
+          )}
+          {erros.aceite && <FormHelperText error sx={{ mt: 0.5 }}>{erros.aceite}</FormHelperText>}
         </Box>
 
         <Button type="submit" variant="contained" fullWidth disabled={carregando} size="large">
@@ -291,9 +333,14 @@ function AbaCriarConta() {
         <Box sx={{ p: 2, display: "flex", justifyContent: "flex-end" }}>
           <Button
             variant="contained"
-            onClick={() => { setAceite(true); setTermoAberto(false); setErros((v) => ({ ...v, aceite: "" })); }}
+            onClick={() => {
+              setTermoLido(true);
+              setAceite(true);
+              setTermoAberto(false);
+              setErros((v) => ({ ...v, aceite: "" }));
+            }}
           >
-            Li e aceito
+            Li e aceito os Termos
           </Button>
         </Box>
       </Dialog>

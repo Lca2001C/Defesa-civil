@@ -80,7 +80,7 @@ export class PainelService {
       respondido,
       emPreenchimento,
       naoRespondeu,
-      percentual: total > 0 ? Math.round((respondido / total) * 100) : 0,
+      percentual: total > 0 ? Math.round((respondido / total) * 1000) / 10 : 0,
     };
   }
 

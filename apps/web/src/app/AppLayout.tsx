@@ -21,6 +21,7 @@ import AssignmentIcon from "@mui/icons-material/Assignment";
 import EventIcon from "@mui/icons-material/Event";
 import LocationCityIcon from "@mui/icons-material/LocationCity";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { NavLink, Outlet } from "react-router-dom";
 import { type ReactNode } from "react";
@@ -33,6 +34,8 @@ interface ItemMenu {
   rotulo: string;
   icone: ReactNode;
   path: string;
+  nivelMinimo?: number;
+  permissao?: string;
 }
 
 const itensMenu: ItemMenu[] = [
@@ -41,8 +44,9 @@ const itensMenu: ItemMenu[] = [
   { rotulo: "Formulários", icone: <DescriptionIcon />, path: "/formularios" },
   { rotulo: "Submissões", icone: <AssignmentIcon />, path: "/submissoes" },
   { rotulo: "Competências", icone: <EventIcon />, path: "/competencias" },
-  { rotulo: "Municípios", icone: <LocationCityIcon />, path: "/municipios" },
-  { rotulo: "Admin", icone: <AdminPanelSettingsIcon />, path: "/admin" },
+  { rotulo: "Municípios", icone: <LocationCityIcon />, path: "/municipios", nivelMinimo: 50 },
+  { rotulo: "Admin", icone: <AdminPanelSettingsIcon />, path: "/admin", permissao: "usuarios.gerenciar" },
+  { rotulo: "Meu Perfil", icone: <AccountCircleIcon />, path: "/perfil" },
 ];
 
 const SELECTED_SX = {
@@ -116,31 +120,37 @@ export default function AppLayout() {
         </Box>
         <Box sx={{ overflow: "auto", py: 1 }}>
           <List>
-            {itensMenu.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                end={item.path === "/"}
-                style={{ textDecoration: "none", color: "inherit" }}
-              >
-                {({ isActive }) => (
-                  <ListItemButton
-                    selected={isActive}
-                    sx={{
-                      mx: 1,
-                      borderRadius: 2,
-                      mb: 0.5,
-                      ...(isActive ? SELECTED_SX : {}),
-                    }}
-                  >
-                    <ListItemIcon sx={{ color: cores.laranjaPrimario, minWidth: 40 }}>
-                      {item.icone}
-                    </ListItemIcon>
-                    <ListItemText primary={item.rotulo} />
-                  </ListItemButton>
-                )}
-              </NavLink>
-            ))}
+            {itensMenu
+              .filter((item) => {
+                if (item.nivelMinimo && (usuario?.perfilNivel ?? 0) < item.nivelMinimo) return false;
+                if (item.permissao && !usuario?.permissoes?.includes(item.permissao)) return false;
+                return true;
+              })
+              .map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.path === "/"}
+                  style={{ textDecoration: "none", color: "inherit" }}
+                >
+                  {({ isActive }) => (
+                    <ListItemButton
+                      selected={isActive}
+                      sx={{
+                        mx: 1,
+                        borderRadius: 2,
+                        mb: 0.5,
+                        ...(isActive ? SELECTED_SX : {}),
+                      }}
+                    >
+                      <ListItemIcon sx={{ color: cores.laranjaPrimario, minWidth: 40 }}>
+                        {item.icone}
+                      </ListItemIcon>
+                      <ListItemText primary={item.rotulo} />
+                    </ListItemButton>
+                  )}
+                </NavLink>
+              ))}
           </List>
         </Box>
       </Drawer>

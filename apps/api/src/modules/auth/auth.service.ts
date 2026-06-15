@@ -26,6 +26,7 @@ const MAX_TENTATIVAS = 5;
 const BLOQUEIO_SEGUNDOS = 15 * 60;
 const RECOVERY_TTL_HORAS = 1;
 const PERFIL_OPERADOR = 'OPERADOR_MUNICIPAL';
+const PERFIL_COORD_COMPDEC = 'COORDENADOR_COMPDEC';
 
 @Injectable()
 export class AuthService {
@@ -143,11 +144,38 @@ export class AuthService {
     if (emailExiste) throw new BadRequestException('E-mail já cadastrado.');
     if (cpfExiste) throw new BadRequestException('CPF já cadastrado.');
 
-    // Perfil obrigatório para auto-cadastro
-    const perfil = await this.prisma.perfil.findUnique({
-      where: { codigo: PERFIL_OPERADOR },
+    // Perfil atribuído conforme autodeclaração: coordenador COMPDEC recebe perfil
+    // sem permissões até o SUPER_ADMIN liberar o acesso adequado.
+    const codigoPerfil = dto.ehCoordenadorCompdec ? PERFIL_COORD_COMPDEC : PERFIL_OPERADOR;
+    let perfil = await this.prisma.perfil.findUnique({
+      where: { codigo: codigoPerfil },
       include: { permissoes: true },
     });
+
+    // Cria ou corrige COORDENADOR_COMPDEC garantindo as permissões básicas.
+    if (!perfil && codigoPerfil === PERFIL_COORD_COMPDEC) {
+      const chaves = ['painel.ver', 'submissoes.criar', 'submissoes.editar', 'relatorios.exportar'];
+      const permissoesBasicas = await this.prisma.permissao.findMany({
+        where: { chave: { in: chaves } },
+      });
+      const connect = permissoesBasicas.map((p) => ({ chave: p.chave }));
+      perfil = await this.prisma.perfil.upsert({
+        where: { codigo: PERFIL_COORD_COMPDEC },
+        create: {
+          codigo: PERFIL_COORD_COMPDEC,
+          nome: 'Coordenador COMPDEC',
+          nivel: 25,
+          permissoes: { connect },
+        },
+        update: {
+          nome: 'Coordenador COMPDEC',
+          nivel: 25,
+          permissoes: { set: connect },
+        },
+        include: { permissoes: true },
+      });
+    }
+
     if (!perfil) {
       throw new BadRequestException('Perfil padrão não configurado. Contate o administrador.');
     }
@@ -197,6 +225,23 @@ export class AuthService {
           versaoTermo: dto.versaoTermoAceito,
         },
       });
+
+      if (dto.ehCoordenadorCompdec && dto.municipioId) {
+        await tx.compdec.upsert({
+          where: { municipioId: dto.municipioId },
+          create: {
+            municipioId: dto.municipioId,
+            coordenadorNome: dto.nome,
+            telefone: dto.telefone,
+            email: dto.email,
+          },
+          update: {
+            coordenadorNome: dto.nome,
+            telefone: dto.telefone,
+            email: dto.email,
+          },
+        });
+      }
 
       return novoUsuario;
     });

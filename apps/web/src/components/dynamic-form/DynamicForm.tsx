@@ -18,6 +18,8 @@ import type { PaginaFormulario, SchemaFormulario } from "@dcmg/contracts";
 import { campoVisivel, construirDefaultValues, gerarSchemaZod } from "./schema";
 import { REGISTRY } from "./registry";
 
+import type { ArquivoUploadado } from "./types";
+
 interface Props {
   schema: SchemaFormulario;
   onSubmit: (dados: Record<string, unknown>) => void | Promise<void>;
@@ -25,9 +27,11 @@ interface Props {
   defaultValues?: Record<string, unknown>;
   /** Modo preview: nao envia dados de verdade. */
   preview?: boolean;
+  /** Callback de upload — passado para campos do tipo UPLOAD. */
+  onUpload?: (file: File, perguntaCodigo: string) => Promise<ArquivoUploadado>;
 }
 
-export function DynamicForm({ schema, onSubmit, carregando = false, defaultValues, preview = false }: Props) {
+export function DynamicForm({ schema, onSubmit, carregando = false, defaultValues, preview = false, onUpload }: Props) {
   const zodSchema = useMemo(() => gerarSchemaZod(schema), [schema]);
   const form = useForm<Record<string, unknown>>({
     resolver: zodResolver(zodSchema),
@@ -98,7 +102,7 @@ export function DynamicForm({ schema, onSubmit, carregando = false, defaultValue
                       name={campo.codigo}
                       control={form.control}
                       render={({ field, fieldState }) => (
-                        <Componente campo={campo} field={field} error={fieldState.error} />
+                        <Componente campo={campo} field={field} error={fieldState.error} onUpload={onUpload} />
                       )}
                     />
                   </Grid>

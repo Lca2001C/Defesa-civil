@@ -1,4 +1,5 @@
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -6,11 +7,20 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  IconButton,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import DescriptionIcon from "@mui/icons-material/Description";
-import { useQuery } from "@tanstack/react-query";
+import DeleteIcon from "@mui/icons-material/Delete";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
@@ -41,11 +51,26 @@ const COR_STATUS: Record<string, "default" | "warning" | "success" | "error"> = 
 export default function FormulariosPage() {
   const navigate = useNavigate();
   const { usuario } = useAuth();
+  const qc = useQueryClient();
   const podeGerenciar = usuario?.permissoes.includes("formularios.criar") ?? false;
+  const [excluindo, setExcluindo] = useState<Formulario | null>(null);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["formularios"],
     queryFn: () => api.get<ListagemFormularios>("/formularios?porPagina=50"),
+  });
+
+  const mutarExcluir = useMutation({
+    mutationFn: (id: string) => api.delete(`/formularios/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["formularios"] });
+      setExcluindo(null);
+      setErroExclusao(null);
+    },
+    onError: (err: unknown) => {
+      setErroExclusao(err instanceof Error ? err.message : "Erro ao excluir formulário.");
+    },
   });
 
   return (
@@ -89,32 +114,74 @@ export default function FormulariosPage() {
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
         {data?.items.map((f) => (
           <Card key={f.id}>
-            <CardActionArea onClick={() => navigate(`/formularios/${f.id}`)}>
-              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    {f.nome}
-                  </Typography>
-                  {f.descricao && (
-                    <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 500 }}>
-                      {f.descricao}
+            <Box sx={{ display: "flex", alignItems: "stretch" }}>
+              <CardActionArea onClick={() => navigate(`/formularios/${f.id}`)} sx={{ flex: 1 }}>
+                <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      {f.nome}
                     </Typography>
-                  )}
-                  <Typography variant="caption" color="text.secondary">
-                    {f._count.versoes} versão{f._count.versoes !== 1 ? "ões" : ""}
-                    {f.categoria ? ` · ${f.categoria}` : ""}
-                  </Typography>
+                    {f.descricao && (
+                      <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 500 }}>
+                        {f.descricao}
+                      </Typography>
+                    )}
+                    <Typography variant="caption" color="text.secondary">
+                      {f._count.versoes} versão{f._count.versoes !== 1 ? "ões" : ""}
+                      {f.categoria ? ` · ${f.categoria}` : ""}
+                    </Typography>
+                  </Box>
+                  <Chip
+                    label={f.status}
+                    color={COR_STATUS[f.status] ?? "default"}
+                    size="small"
+                  />
+                </CardContent>
+              </CardActionArea>
+              {podeGerenciar && (
+                <Box sx={{ display: "flex", alignItems: "center", px: 1 }}>
+                  <Tooltip title="Excluir formulário">
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => { setExcluindo(f); setErroExclusao(null); }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 </Box>
-                <Chip
-                  label={f.status}
-                  color={COR_STATUS[f.status] ?? "default"}
-                  size="small"
-                />
-              </CardContent>
-            </CardActionArea>
+              )}
+            </Box>
           </Card>
         ))}
       </Box>
+
+      <Dialog
+        open={!!excluindo}
+        onClose={() => { setExcluindo(null); setErroExclusao(null); }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Excluir formulário?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Excluir permanentemente o formulário <strong>{excluindo?.nome}</strong> e todas as suas versões?
+            Esta ação não pode ser desfeita. Formulários com submissões não podem ser excluídos.
+          </DialogContentText>
+          {erroExclusao && <Alert severity="error" sx={{ mt: 2 }}>{erroExclusao}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setExcluindo(null); setErroExclusao(null); }}>Cancelar</Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={mutarExcluir.isPending}
+            onClick={() => excluindo && mutarExcluir.mutate(excluindo.id)}
+          >
+            {mutarExcluir.isPending ? <CircularProgress size={18} color="inherit" /> : "Excluir"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

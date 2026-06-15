@@ -13,11 +13,11 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request, Express } from 'express';
-import { SubmissaoStatus } from '@prisma/client';
 import { SubmissoesService } from './submissoes.service';
 import { CriarSubmissaoDto } from './dto/criar-submissao.dto';
 import { AtualizarSubmissaoDto } from './dto/atualizar-submissao.dto';
@@ -25,7 +25,7 @@ import { RevisaoDto } from './dto/revisao.dto';
 import { Permissao } from '../../common/decorators/permissao.decorator';
 import { UsuarioAtual } from '../../common/decorators/usuario-atual.decorator';
 import type { JwtPayload } from '../../common/types/jwt-payload';
-import { PaginacaoDto } from '../../common/dto/paginacao.dto';
+import { FiltroSubmissaoDto } from './dto/filtro-submissao.dto';
 
 @ApiTags('Submissões')
 @Controller('submissoes')
@@ -50,20 +50,17 @@ export class SubmissoesController {
   @Permissao('submissoes.criar')
   @ApiOperation({ summary: 'Listar submissões (com filtros e paginação)' })
   listar(
-    @Query() paginacao: PaginacaoDto,
-    @Query('competenciaId') competenciaId?: string,
-    @Query('formularioVersaoId') formularioVersaoId?: string,
-    @Query('municipioId') municipioId?: string,
-    @Query('status') status?: string,
+    @Query() filtro: FiltroSubmissaoDto,
     @UsuarioAtual() usuario?: JwtPayload,
   ) {
+    const { pagina, porPagina, competenciaId, formularioVersaoId, municipioId, status } = filtro;
     return this.service.listar(
-      paginacao,
+      { pagina, porPagina },
       {
         competenciaId,
         formularioVersaoId,
         municipioId: municipioId ? parseInt(municipioId, 10) : undefined,
-        status: status as SubmissaoStatus | undefined,
+        status,
       },
       usuario!,
     );
@@ -74,6 +71,14 @@ export class SubmissoesController {
   @ApiOperation({ summary: 'Buscar submissão por ID (com schema composto, dados e anexos)' })
   buscar(@Param('id') id: string, @UsuarioAtual() usuario: JwtPayload) {
     return this.service.buscarPorId(id, usuario);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Permissao('submissoes.criar')
+  @ApiOperation({ summary: 'Exclui uma submissão (RASCUNHO/EM_PREENCHIMENTO para usuários comuns; qualquer status para admins)' })
+  excluir(@Param('id') id: string, @UsuarioAtual() usuario: JwtPayload) {
+    return this.service.excluir(id, usuario);
   }
 
   @Patch(':id')

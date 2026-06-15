@@ -18,6 +18,7 @@ import CompetenciasPage from "../features/competencias/CompetenciasPage";
 import MunicipiosPage from "../features/municipios/MunicipiosPage";
 import MunicipioDetalhe from "../features/municipios/MunicipioDetalhe";
 import AdminPage from "../features/admin/AdminPage";
+import PerfilPage from "../features/perfil/PerfilPage";
 
 export const router = createBrowserRouter([
   {
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
       { path: "municipios", element: <MunicipiosPage /> },
       { path: "municipios/:id", element: <MunicipioDetalhe /> },
       { path: "admin", element: <AdminPage /> },
+      { path: "perfil", element: <PerfilPage /> },
     ],
   },
   {

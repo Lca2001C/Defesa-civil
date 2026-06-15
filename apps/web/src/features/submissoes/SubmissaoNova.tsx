@@ -24,6 +24,7 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { DynamicForm } from "../../components/dynamic-form";
+import type { ArquivoUploadado } from "../../components/dynamic-form/types";
 import type { SchemaFormulario } from "@dcmg/contracts";
 
 // ── tipos ────────────────────────────────────────────────────────────────────
@@ -155,6 +156,49 @@ export default function SubmissaoNova() {
     onError: (e: unknown) => setErro((e as Error).message),
   });
 
+  // ── upload inline em campos UPLOAD do formulário ─────────────────────────
+
+  async function handleUploadInForm(file: File, perguntaCodigo: string): Promise<ArquivoUploadado> {
+    // Cria o rascunho de forma lazy na primeira vez que o usuário sobe um arquivo
+    let sid = submissaoId;
+    if (!sid) {
+      const compId = versaoSelecionada?.competencia?.id ?? "";
+      const sub = await api.post<{ id: string }>("/submissoes", {
+        formularioVersaoId: versaoId,
+        competenciaId: compId,
+        municipioId: parseInt(municipioId, 10),
+        dados: {},
+        enviarImediatamente: false,
+      });
+      sid = sub.id;
+      setSubmissaoId(sid);
+    }
+
+    const fd = new FormData();
+    fd.append("arquivo", file);
+    fd.append("perguntaCodigo", perguntaCodigo);
+    const r = await api.post<{
+      id: string;
+      arquivo: { nomeOriginal: string; tamanhoBytes: number | null };
+    }>(`/submissoes/${sid}/anexos`, fd);
+
+    const resultado: ArquivoUploadado = {
+      id: r.id,
+      nome: r.arquivo.nomeOriginal,
+      tamanhoKb: r.arquivo.tamanhoBytes
+        ? Math.round(r.arquivo.tamanhoBytes / 1024)
+        : undefined,
+    };
+
+    // Registra no estado de anexos para exibição no passo de confirmação
+    setArquivos((prev) => {
+      const jaExiste = prev.some((a) => a.id === resultado.id);
+      return jaExiste ? prev : [...prev, resultado];
+    });
+
+    return resultado;
+  }
+
   // ── mutation de envio ─────────────────────────────────────────────────────
 
   const enviarMutation = useMutation({
@@ -255,6 +299,7 @@ export default function SubmissaoNova() {
               defaultValues={dados}
               carregando={salvando}
               onSubmit={handlePreencherForm}
+              onUpload={handleUploadInForm}
             />
           </CardContent>
         </Card>

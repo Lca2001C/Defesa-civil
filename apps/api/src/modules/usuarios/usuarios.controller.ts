@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -18,6 +19,7 @@ import {
 import { Permissao } from '../../common/decorators/permissao.decorator';
 import { UsuarioAtual } from '../../common/decorators/usuario-atual.decorator';
 import type { JwtPayload } from '../../common/types/jwt-payload';
+import { AtualizarMeDto } from './dto/atualizar-me.dto';
 import { AtualizarUsuarioDto } from './dto/atualizar-usuario.dto';
 import { CriarUsuarioDto } from './dto/criar-usuario.dto';
 import { RedefinirSenhaDto } from './dto/redefinir-senha.dto';
@@ -28,6 +30,20 @@ import { UsuariosService } from './usuarios.service';
 @Controller('usuarios')
 export class UsuariosController {
   constructor(private readonly service: UsuariosService) {}
+
+  /** Dados do próprio usuário autenticado (para tela de perfil). */
+  @Get('me')
+  @ApiOperation({ summary: 'Retorna os dados completos do usuário autenticado.' })
+  me(@UsuarioAtual() usuario: JwtPayload) {
+    return this.service.buscarMe(usuario.sub);
+  }
+
+  /** Atualiza nome, cargo e telefone do próprio usuário. */
+  @Patch('me')
+  @ApiOperation({ summary: 'Atualiza dados pessoais do usuário autenticado.' })
+  atualizarMe(@Body() dto: AtualizarMeDto, @UsuarioAtual() usuario: JwtPayload) {
+    return this.service.atualizarMe(usuario.sub, dto);
+  }
 
   /** LGPD art. 18 — o titular consulta todos os seus dados pessoais. */
   @Get('meus-dados')
@@ -93,6 +109,14 @@ export class UsuariosController {
   @ApiOperation({ summary: 'Desativa um usuário.' })
   desativar(@Param('id') id: string, @UsuarioAtual() usuario: JwtPayload) {
     return this.service.desativar(id, usuario);
+  }
+
+  @Delete(':id')
+  @Permissao('usuarios.gerenciar')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Exclui permanentemente um usuário.' })
+  excluir(@Param('id') id: string, @UsuarioAtual() usuario: JwtPayload) {
+    return this.service.excluir(id, usuario);
   }
 
   @Patch(':id/senha')
