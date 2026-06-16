@@ -22,8 +22,14 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    strictPort: false,   // tenta a próxima porta livre se 3000 estiver ocupada
+    strictPort: true,    // mantém a 3000 fixa (o túnel ngrok aponta para ela)
     host: "0.0.0.0",     // aceita conexões externas (WSL, rede local, Ngrok)
+    // Libera qualquer Host (o Vite 5.4+ bloqueia Hosts desconhecidos por padrão).
+    // Necessário para o túnel ngrok, cujo domínio é aleatório (ngrok-free.dev/.app).
+    allowedHosts: true,
+    // Sem cache em dev: evita que o navegador (especialmente via túnel ngrok)
+    // sirva um shell/bundle antigo após reinícios do dev server.
+    headers: { "Cache-Control": "no-store" },
     proxy: {
       "/api": {
         target: "http://localhost:4000",

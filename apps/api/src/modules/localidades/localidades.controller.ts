@@ -38,6 +38,13 @@ export class LocalidadesController {
     );
   }
 
+  @Get('municipios/lista')
+  @Permissao('submissoes.criar')
+  @ApiOperation({ summary: 'Lista enxuta de todos os municípios de MG (id IBGE + nome) para seletores.' })
+  listarTodosMunicipios() {
+    return this.service.listarTodosMunicipios();
+  }
+
   @Get('municipios/:id')
   @Permissao('painel.ver')
   @ApiOperation({ summary: 'Detalhe de um município com COMPDEC e regional.' })

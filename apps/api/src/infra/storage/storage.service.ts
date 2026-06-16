@@ -4,15 +4,32 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
+  UploadPartCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
 import type { Env } from '../../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Arquivo } from '@prisma/client';
+
+/** Parte concluída de um upload multipart (PartNumber + ETag retornado pelo R2). */
+export interface ParteMultipart {
+  numero: number;
+  etag: string;
+}
+
+/** Tamanho de cada parte do multipart (64 MB). 50 GB / 64 MB ≈ 800 partes (< 10.000). */
+export const PART_SIZE_BYTES = 64 * 1024 * 1024;
+
+/** Validade das URLs assinadas (2h — cobre uploads longos de partes grandes). */
+const PRESIGN_EXPIRA_SEG = 2 * 60 * 60;
 
 @Injectable()
 export class StorageService {
@@ -78,7 +95,7 @@ export class StorageService {
         chave,
         nomeOriginal,
         mimeType,
-        tamanhoBytes: buffer.length,
+        tamanhoBytes: BigInt(buffer.length),
         driver: this.driver,
       },
     });
@@ -119,7 +136,125 @@ export class StorageService {
         chave,
         nomeOriginal,
         mimeType,
-        tamanhoBytes: size,
+        tamanhoBytes: BigInt(size),
+        driver: this.driver,
+      },
+    });
+  }
+
+  /** True quando o driver S3/R2 está ativo (habilita o fluxo multipart presigned). */
+  get suportaPresigned(): boolean {
+    return this.driver === 's3' && !!this.s3;
+  }
+
+  /** Gera a chave única do objeto (mesmo padrão de salvar). */
+  private gerarChave(nomeOriginal: string): string {
+    return `${randomUUID()}-${nomeOriginal.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
+  }
+
+  // ── Upload multipart direto ao R2 (presigned) ──────────────────────────────
+
+  /** Inicia um upload multipart no R2 e retorna a chave + uploadId. */
+  async iniciarMultipart(
+    nomeOriginal: string,
+    mimeType?: string,
+  ): Promise<{ chave: string; uploadId: string }> {
+    if (!this.suportaPresigned) {
+      throw new InternalServerErrorException('Upload multipart requer STORAGE_DRIVER=s3.');
+    }
+    const chave = this.gerarChave(nomeOriginal);
+    const resp = await this.s3!.send(
+      new CreateMultipartUploadCommand({
+        Bucket: this.s3Bucket,
+        Key: chave,
+        ContentType: mimeType,
+      }),
+    );
+    if (!resp.UploadId) {
+      throw new InternalServerErrorException('R2 não retornou UploadId.');
+    }
+    return { chave, uploadId: resp.UploadId };
+  }
+
+  /** Gera uma URL assinada para o navegador enviar UMA parte (PUT) direto ao R2. */
+  async assinarParte(chave: string, uploadId: string, numeroParte: number): Promise<string> {
+    if (!this.suportaPresigned) {
+      throw new InternalServerErrorException('Upload multipart requer STORAGE_DRIVER=s3.');
+    }
+    const comando = new UploadPartCommand({
+      Bucket: this.s3Bucket,
+      Key: chave,
+      UploadId: uploadId,
+      PartNumber: numeroParte,
+    });
+    return getSignedUrl(this.s3!, comando, { expiresIn: PRESIGN_EXPIRA_SEG });
+  }
+
+  /** Finaliza o upload multipart juntando as partes (ordenadas por número). */
+  async completarMultipart(
+    chave: string,
+    uploadId: string,
+    partes: ParteMultipart[],
+  ): Promise<void> {
+    if (!this.suportaPresigned) {
+      throw new InternalServerErrorException('Upload multipart requer STORAGE_DRIVER=s3.');
+    }
+    const ordenadas = [...partes].sort((a, b) => a.numero - b.numero);
+    await this.s3!.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: this.s3Bucket,
+        Key: chave,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: ordenadas.map((p) => ({ PartNumber: p.numero, ETag: p.etag })),
+        },
+      }),
+    );
+  }
+
+  /** Cancela um upload multipart (libera as partes órfãs no R2). */
+  async abortarMultipart(chave: string, uploadId: string): Promise<void> {
+    if (!this.suportaPresigned) return;
+    await this.s3!.send(
+      new AbortMultipartUploadCommand({
+        Bucket: this.s3Bucket,
+        Key: chave,
+        UploadId: uploadId,
+      }),
+    );
+  }
+
+  /** URL assinada de download (GET) — para baixar arquivos grandes direto do R2. */
+  async assinarDownload(chave: string, nomeOriginal?: string): Promise<string> {
+    if (!this.suportaPresigned) {
+      throw new InternalServerErrorException('Download assinado requer STORAGE_DRIVER=s3.');
+    }
+    const comando = new GetObjectCommand({
+      Bucket: this.s3Bucket,
+      Key: chave,
+      ...(nomeOriginal
+        ? { ResponseContentDisposition: `attachment; filename="${nomeOriginal}"` }
+        : {}),
+    });
+    return getSignedUrl(this.s3!, comando, { expiresIn: PRESIGN_EXPIRA_SEG });
+  }
+
+  /**
+   * Registra a linha Arquivo SEM reupload (o objeto já foi enviado direto ao R2).
+   * Usado ao concluir o multipart.
+   */
+  async registrarArquivo(dados: {
+    chave: string;
+    nomeOriginal: string;
+    mimeType?: string;
+    tamanhoBytes: number;
+  }): Promise<Arquivo> {
+    return this.prisma.arquivo.create({
+      data: {
+        chave: dados.chave,
+        nomeOriginal: dados.nomeOriginal,
+        mimeType: dados.mimeType,
+        tamanhoBytes: BigInt(Math.max(0, Math.round(dados.tamanhoBytes))),
         driver: this.driver,
       },
     });

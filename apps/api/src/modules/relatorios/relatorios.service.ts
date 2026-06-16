@@ -8,20 +8,23 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
-import { Prisma, SubmissaoStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import {
+  montarWhereSubmissoes,
+  type FiltrosSubmissao,
+} from '../submissoes/submissoes-where.util';
+import type { JwtPayload } from '../../common/types/jwt-payload';
 
 export const RELATORIOS_QUEUE = 'relatorios';
 
-export interface FiltrosExportacao {
-  competenciaId: string;
-  status?: SubmissaoStatus;
-  municipioId?: number;
-  regionalId?: string;
-}
+/** Mesmos filtros da listagem (competenciaId agora opcional). */
+export type FiltrosExportacao = FiltrosSubmissao;
 
 export interface ExportJobData {
   filtros: FiltrosExportacao;
   solicitanteId: string;
+  /** Escopo do solicitante — aplicado ao `where` para não vazar dados fora do escopo. */
+  usuario: JwtPayload;
 }
 
 export interface ExportJobResultado {
@@ -68,16 +71,19 @@ export class RelatoriosService {
   // ── Enfileiramento e consulta de jobs ──────────────────────────────────────
 
   /** Enfileira a geração do Excel e retorna o ID do job para acompanhamento. */
-  async enfileirarExport(filtros: FiltrosExportacao, solicitanteId: string): Promise<string> {
-    const competencia = await this.prisma.competencia.findUnique({
-      where: { id: filtros.competenciaId },
-      select: { id: true },
-    });
-    if (!competencia) throw new NotFoundException('Competência não encontrada');
+  async enfileirarExport(filtros: FiltrosExportacao, usuario: JwtPayload): Promise<string> {
+    // competenciaId é opcional; quando informado, validamos que existe.
+    if (filtros.competenciaId) {
+      const competencia = await this.prisma.competencia.findUnique({
+        where: { id: filtros.competenciaId },
+        select: { id: true },
+      });
+      if (!competencia) throw new NotFoundException('Competência não encontrada');
+    }
 
     const job = await this.fila.add(
       'exportar-submissoes',
-      { filtros, solicitanteId } satisfies ExportJobData,
+      { filtros, solicitanteId: usuario.sub, usuario } satisfies ExportJobData,
       { attempts: 2, backoff: { type: 'exponential', delay: 3000 }, removeOnComplete: 50, removeOnFail: 50 },
     );
     return job.id!;
@@ -101,25 +107,28 @@ export class RelatoriosService {
 
   /** Gera o .xlsx em streaming, salva no storage e devolve o artefato. */
   async executarExport(job: Job<ExportJobData>): Promise<ExportJobResultado> {
-    const { filtros } = job.data;
-    const competencia = await this.prisma.competencia.findUnique({
-      where: { id: filtros.competenciaId },
-    });
-    if (!competencia) throw new NotFoundException('Competência não encontrada');
+    const { filtros, usuario } = job.data;
 
-    const where: Prisma.SubmissaoWhereInput = {
-      competenciaId: filtros.competenciaId,
-      ...(filtros.status ? { status: filtros.status } : {}),
-      ...(filtros.municipioId ? { municipioId: filtros.municipioId } : {}),
-      ...(filtros.regionalId ? { municipio: { regionalId: filtros.regionalId } } : {}),
-    };
+    // Rótulo da competência para o resumo (ou "Todas" quando não filtrado).
+    let competenciaNome = 'Todas as competências';
+    if (filtros.competenciaId) {
+      const competencia = await this.prisma.competencia.findUnique({
+        where: { id: filtros.competenciaId },
+        select: { nome: true },
+      });
+      if (!competencia) throw new NotFoundException('Competência não encontrada');
+      competenciaNome = competencia.nome;
+    }
+
+    // Mesmo `where` da listagem (filtros + busca + escopo do solicitante).
+    const where = montarWhereSubmissoes(filtros, usuario);
 
     const tmpPath = path.join(os.tmpdir(), `export-${randomUUID()}.xlsx`);
 
     try {
-      await this.gerarExcelStream(tmpPath, competencia.nome, where, job);
+      await this.gerarExcelStream(tmpPath, competenciaNome, where, job);
 
-      const nome = `submissoes_${filtros.competenciaId}_${Date.now()}.xlsx`;
+      const nome = `submissoes_${Date.now()}.xlsx`;
       const arquivo = await this.storage.salvarDeCaminho(
         tmpPath,
         nome,
@@ -149,8 +158,10 @@ export class RelatoriosService {
 
     const cabecalhos = [
       { header: 'Protocolo', width: 22 },
+      { header: 'Código IBGE', width: 14 },
       { header: 'Município', width: 28 },
       { header: 'Regional (REDEC)', width: 24 },
+      { header: 'Competência', width: 24 },
       { header: 'Formulário', width: 28 },
       { header: 'Versão', width: 10 },
       { header: 'Status', width: 22 },
@@ -181,6 +192,7 @@ export class RelatoriosService {
         select: {
           id: true,
           protocolo: true,
+          municipioId: true,
           status: true,
           nomeRespondente: true,
           cpfRespondente: true,
@@ -189,6 +201,7 @@ export class RelatoriosService {
           enviadoEm: true,
           aprovadoEm: true,
           municipio: { select: { nome: true, regional: { select: { nome: true } } } },
+          competencia: { select: { nome: true } },
           formularioVersao: { select: { versao: true, formulario: { select: { nome: true } } } },
         },
         orderBy: [{ criadoEm: 'asc' }, { id: 'asc' }],
@@ -201,8 +214,10 @@ export class RelatoriosService {
       for (const s of lote) {
         const linha = sheet.addRow([
           s.protocolo ?? '—',
+          s.municipioId,
           s.municipio.nome,
           s.municipio.regional?.nome ?? '—',
+          s.competencia.nome,
           s.formularioVersao.formulario.nome,
           `v${s.formularioVersao.versao}`,
           LABEL_STATUS[s.status] ?? s.status,
@@ -213,7 +228,7 @@ export class RelatoriosService {
           s.enviadoEm ? s.enviadoEm.toLocaleString('pt-BR') : '—',
           s.aprovadoEm ? s.aprovadoEm.toLocaleString('pt-BR') : '—',
         ]);
-        const celulaStatus = linha.getCell(6);
+        const celulaStatus = linha.getCell(8); // coluna "Status"
         celulaStatus.font = { bold: true, color: { argb: STATUS_CORES[s.status] ?? 'FF94A3B8' } };
         linha.getCell(1).font = { name: 'Courier New', size: 10 };
         linha.commit();

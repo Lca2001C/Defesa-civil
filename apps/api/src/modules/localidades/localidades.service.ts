@@ -4,15 +4,37 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { RedisService } from '../../infra/redis/redis.service';
 import type { JwtPayload } from '../../common/types/jwt-payload';
 import type { PaginacaoDto } from '../../common/dto/paginacao.dto';
 import type { AtualizarCompdecDto } from './dto/atualizar-compdec.dto';
 
 @Injectable()
 export class LocalidadesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
   // ── Municípios ─────────────────────────────────────────────────────────────
+
+  /**
+   * Lista enxuta de TODOS os municípios de MG (id = código IBGE + nome).
+   * Usada no seletor de município ao criar submissão. Cacheada (muda raramente).
+   */
+  async listarTodosMunicipios(): Promise<{ id: number; nome: string }[]> {
+    const chave = 'municipios:lista:mg';
+    const cacheado = await this.redis.cacheGet<{ id: number; nome: string }[]>(chave);
+    if (cacheado) return cacheado;
+
+    const municipios = await this.prisma.municipio.findMany({
+      where: { ufId: 31 },
+      select: { id: true, nome: true },
+      orderBy: { nome: 'asc' },
+    });
+    await this.redis.cacheSet(chave, municipios, 3600);
+    return municipios;
+  }
 
   async listarMunicipios(
     paginacao: PaginacaoDto,

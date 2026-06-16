@@ -26,6 +26,12 @@ import { Permissao } from '../../common/decorators/permissao.decorator';
 import { UsuarioAtual } from '../../common/decorators/usuario-atual.decorator';
 import type { JwtPayload } from '../../common/types/jwt-payload';
 import { FiltroSubmissaoDto } from './dto/filtro-submissao.dto';
+import {
+  IniciarMultipartDto,
+  AssinarParteDto,
+  CompletarMultipartDto,
+  AbortarMultipartDto,
+} from './dto/anexo-multipart.dto';
 
 @ApiTags('Submissões')
 @Controller('submissoes')
@@ -53,14 +59,29 @@ export class SubmissoesController {
     @Query() filtro: FiltroSubmissaoDto,
     @UsuarioAtual() usuario?: JwtPayload,
   ) {
-    const { pagina, porPagina, competenciaId, formularioVersaoId, municipioId, status } = filtro;
+    const {
+      pagina,
+      porPagina,
+      competenciaId,
+      formularioVersaoId,
+      municipioId,
+      regionalId,
+      status,
+      busca,
+      dataInicio,
+      dataFim,
+    } = filtro;
     return this.service.listar(
       { pagina, porPagina },
       {
         competenciaId,
         formularioVersaoId,
         municipioId: municipioId ? parseInt(municipioId, 10) : undefined,
+        regionalId,
         status,
+        busca,
+        dataInicio,
+        dataFim,
       },
       usuario!,
     );
@@ -148,9 +169,16 @@ export class SubmissoesController {
   @Post(':id/anexos')
   @HttpCode(HttpStatus.CREATED)
   @Permissao('submissoes.editar')
-  @UseInterceptors(FileInterceptor('arquivo', { storage: memoryStorage() }))
+  @UseInterceptors(
+    FileInterceptor('arquivo', {
+      storage: memoryStorage(),
+      // Caminho legado (modo local/dev): cap em memória para evitar OOM.
+      // Anexos grandes (até 50 GB) usam o fluxo multipart direto ao R2.
+      limits: { fileSize: 200 * 1024 * 1024 },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Anexa um arquivo (PDF/DOCX/XLSX/ZIP/PNG/JPG) à submissão' })
+  @ApiOperation({ summary: 'Anexa um arquivo via servidor (modo local/dev). Para arquivos grandes, use o fluxo multipart.' })
   adicionarAnexo(
     @Param('id') id: string,
     @UploadedFile() arquivo: Express.Multer.File,
@@ -158,6 +186,67 @@ export class SubmissoesController {
     @Body('perguntaCodigo') perguntaCodigo?: string,
   ) {
     return this.service.adicionarAnexo(id, arquivo, usuario, perguntaCodigo);
+  }
+
+  // ── Upload multipart direto ao R2 (anexos grandes, até 50 GB) ──────────────
+
+  @Post(':id/anexos/multipart/iniciar')
+  @HttpCode(HttpStatus.OK)
+  @Permissao('submissoes.editar')
+  @ApiOperation({ summary: 'Inicia um upload multipart (retorna chave/uploadId ou modo local).' })
+  iniciarMultipart(
+    @Param('id') id: string,
+    @Body() dto: IniciarMultipartDto,
+    @UsuarioAtual() usuario: JwtPayload,
+  ) {
+    return this.service.iniciarAnexoMultipart(id, dto, usuario);
+  }
+
+  @Post(':id/anexos/multipart/assinar-parte')
+  @HttpCode(HttpStatus.OK)
+  @Permissao('submissoes.editar')
+  @ApiOperation({ summary: 'Retorna a URL assinada (PUT) para enviar uma parte direto ao R2.' })
+  assinarParte(
+    @Param('id') id: string,
+    @Body() dto: AssinarParteDto,
+    @UsuarioAtual() usuario: JwtPayload,
+  ) {
+    return this.service.assinarParteAnexo(id, dto, usuario);
+  }
+
+  @Post(':id/anexos/multipart/completar')
+  @HttpCode(HttpStatus.CREATED)
+  @Permissao('submissoes.editar')
+  @ApiOperation({ summary: 'Conclui o upload multipart e registra o anexo.' })
+  completarMultipart(
+    @Param('id') id: string,
+    @Body() dto: CompletarMultipartDto,
+    @UsuarioAtual() usuario: JwtPayload,
+  ) {
+    return this.service.completarAnexoMultipart(id, dto, usuario);
+  }
+
+  @Post(':id/anexos/multipart/abortar')
+  @HttpCode(HttpStatus.OK)
+  @Permissao('submissoes.editar')
+  @ApiOperation({ summary: 'Aborta um upload multipart (cancelamento/erro).' })
+  abortarMultipart(
+    @Param('id') id: string,
+    @Body() dto: AbortarMultipartDto,
+    @UsuarioAtual() usuario: JwtPayload,
+  ) {
+    return this.service.abortarAnexoMultipart(id, dto, usuario);
+  }
+
+  @Get(':id/anexos/:anexoId/url')
+  @Permissao('submissoes.criar')
+  @ApiOperation({ summary: 'Retorna a URL assinada de download (GET) do anexo, direto do R2.' })
+  urlDownloadAnexo(
+    @Param('id') id: string,
+    @Param('anexoId') anexoId: string,
+    @UsuarioAtual() usuario: JwtPayload,
+  ) {
+    return this.service.urlDownloadAnexo(id, anexoId, usuario);
   }
 
   @Delete(':id/anexos/:anexoId')

@@ -65,7 +65,8 @@ export const envSchema = z.object({
   S3_FORCE_PATH_STYLE: booleanFromString(false),
 
   // --- Limites e infraestrutura ---
-  MAX_UPLOAD_MB: intFromString(25),
+  // Limite de upload de anexos em MB (default 50 GB = 51200 MB).
+  MAX_UPLOAD_MB: intFromString(51200),
   WS_REDIS_ADAPTER: booleanFromString(true),
   RATE_LIMIT_TTL: intFromString(60),
   RATE_LIMIT_LIMIT: intFromString(120),

@@ -1,5 +1,6 @@
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -7,6 +8,7 @@ import {
   CircularProgress,
   Divider,
   IconButton,
+  LinearProgress,
   List,
   ListItem,
   ListItemText,
@@ -23,6 +25,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
+import { uploadAnexo } from "../../lib/uploadR2";
 import { DynamicForm } from "../../components/dynamic-form";
 import type { ArquivoUploadado } from "../../components/dynamic-form/types";
 import type { SchemaFormulario } from "@dcmg/contracts";
@@ -49,6 +52,11 @@ interface ArquivoAnexado {
   tamanhoKb?: number;
 }
 
+interface MunicipioOpcao {
+  id: number;
+  nome: string;
+}
+
 // ── constantes ────────────────────────────────────────────────────────────────
 
 const PASSOS = ["Selecionar formulário", "Preencher resposta", "Confirmar e enviar"];
@@ -72,12 +80,19 @@ export default function SubmissaoNova() {
   const [submissaoId, setSubmissaoId] = useState<string | null>(null);
   const [arquivos, setArquivos] = useState<ArquivoAnexado[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const [progressoUpload, setProgressoUpload] = useState<number | null>(null);
 
   // ── queries ──────────────────────────────────────────────────────────────
 
   const { data: versoes, isLoading: carregandoVersoes } = useQuery({
     queryKey: ["versoes-publicadas"],
     queryFn: () => api.get<VersaoOpcao[]>("/formularios/versoes/publicadas"),
+  });
+
+  const { data: municipios = [], isLoading: carregandoMunicipios } = useQuery({
+    queryKey: ["municipios-lista"],
+    queryFn: () => api.get<MunicipioOpcao[]>("/municipios/lista"),
+    staleTime: 60 * 60 * 1000, // 1h — lista praticamente estática
   });
 
   const versaoSelecionada = versoes?.find((v) => v.id === versaoId);
@@ -125,27 +140,18 @@ export default function SubmissaoNova() {
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => {
-      const fd = new FormData();
-      fd.append("arquivo", file);
-      return api.post<{ id: string; arquivo: { nomeOriginal: string; tamanhoBytes: number | null } }>(
-        `/submissoes/${submissaoId}/anexos`,
-        fd,
-      );
+      if (!submissaoId) throw new Error("Submissão ainda não criada.");
+      return uploadAnexo(submissaoId, file, undefined, setProgressoUpload);
     },
     onSuccess: (r) => {
-      setArquivos((prev) => [
-        ...prev,
-        {
-          id: r.id,
-          nome: r.arquivo.nomeOriginal,
-          tamanhoKb: r.arquivo.tamanhoBytes
-            ? Math.round(r.arquivo.tamanhoBytes / 1024)
-            : undefined,
-        },
-      ]);
+      setArquivos((prev) => [...prev, r]);
       setErro(null);
+      setProgressoUpload(null);
     },
-    onError: (e: unknown) => setErro((e as Error).message),
+    onError: (e: unknown) => {
+      setErro((e as Error).message);
+      setProgressoUpload(null);
+    },
   });
 
   const removerArquivoMutation = useMutation({
@@ -174,21 +180,8 @@ export default function SubmissaoNova() {
       setSubmissaoId(sid);
     }
 
-    const fd = new FormData();
-    fd.append("arquivo", file);
-    fd.append("perguntaCodigo", perguntaCodigo);
-    const r = await api.post<{
-      id: string;
-      arquivo: { nomeOriginal: string; tamanhoBytes: number | null };
-    }>(`/submissoes/${sid}/anexos`, fd);
-
-    const resultado: ArquivoUploadado = {
-      id: r.id,
-      nome: r.arquivo.nomeOriginal,
-      tamanhoKb: r.arquivo.tamanhoBytes
-        ? Math.round(r.arquivo.tamanhoBytes / 1024)
-        : undefined,
-    };
+    const resultado = await uploadAnexo(sid, file, perguntaCodigo, setProgressoUpload);
+    setProgressoUpload(null);
 
     // Registra no estado de anexos para exibição no passo de confirmação
     setArquivos((prev) => {
@@ -260,13 +253,30 @@ export default function SubmissaoNova() {
                 ))}
               </TextField>
 
-              <TextField
-                label="Código IBGE do município"
-                value={municipioId}
-                onChange={(e) => setMunicipioId(e.target.value)}
-                size="small"
-                type="number"
-                helperText="Ex.: 3106200 para Belo Horizonte"
+              <Autocomplete
+                options={municipios}
+                loading={carregandoMunicipios}
+                getOptionLabel={(o) => `${o.nome} (${o.id})`}
+                isOptionEqualToValue={(o, v) => o.id === v.id}
+                value={municipios.find((m) => String(m.id) === municipioId) ?? null}
+                onChange={(_, opcao) => setMunicipioId(opcao ? String(opcao.id) : "")}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Município"
+                    size="small"
+                    helperText="Digite o nome ou o código IBGE para buscar"
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {carregandoMunicipios ? <CircularProgress size={18} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
               />
 
               <Button
@@ -379,6 +389,15 @@ export default function SubmissaoNova() {
               />
 
               <Divider sx={{ my: 1.5 }} />
+
+              {progressoUpload !== null && (
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Enviando… {progressoUpload}%
+                  </Typography>
+                  <LinearProgress variant="determinate" value={progressoUpload} sx={{ mt: 0.5 }} />
+                </Box>
+              )}
 
               {arquivos.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">

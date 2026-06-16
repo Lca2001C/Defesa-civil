@@ -116,22 +116,25 @@ services:
   #   docker compose --profile tunnel up ngrok
   # ---------------------------------------------------------------------------
   ngrok:
-    image: ngrok/ngrok:latest
+    # Imagem buildada localmente (sem pull do Docker Hub): base Alpine em cache
+    # + binario do ngrok baixado pelo host. O authtoken vem do env.
+    build:
+      context: .
+      dockerfile: infra/docker/ngrok.Dockerfile
     restart: unless-stopped
     profiles:
       - tunnel
-    # Usa o arquivo de config para forcar o inspector em 0.0.0.0:4040 (acessivel
-    # pelo host) e definir o tunel HTTP para o web (nginx). O authtoken vem do env.
     command: ["start", "--all", "--config", "/etc/ngrok/ngrok.yml"]
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
     volumes:
       - ./infra/ngrok/ngrok.yml:/etc/ngrok/ngrok.yml:ro
+    # Alvo do tunel = app no host (Vite :3000). Garante a resolucao do host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Publica o inspector (Web UI / API local) para o script ler a URL publica.
     ports:
-      - "4040:4040"
-    depends_on:
-      - web
+      - "${NGROK_INSPECTOR_PORT:-4040}:4040"
     networks:
       - dcmg
 

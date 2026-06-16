@@ -459,6 +459,7 @@ model Submissao {
   @@index([municipioId, formularioVersaoId, competenciaId])
   @@index([competenciaId, criadoEm])
   @@index([competenciaId, status])
+  @@index([criadoEm])
   @@map("submissoes")
 }
 
@@ -536,7 +537,7 @@ model Arquivo {
   chave        String   @unique
   nomeOriginal String   @map("nome_original")
   mimeType     String?  @map("mime_type")
-  tamanhoBytes Int?     @map("tamanho_bytes")
+  tamanhoBytes BigInt?  @map("tamanho_bytes")
   driver       String
   criadoEm     DateTime @default(now()) @map("created_at")
 

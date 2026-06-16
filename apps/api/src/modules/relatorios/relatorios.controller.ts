@@ -20,25 +20,37 @@ export class RelatoriosController {
   @Post('submissoes/export')
   @Permissao('relatorios.exportar')
   @ApiOperation({ summary: 'Enfileira a exportação de submissões em Excel (job assíncrono).' })
-  @ApiQuery({ name: 'competenciaId', required: true })
+  @ApiQuery({ name: 'competenciaId', required: false })
+  @ApiQuery({ name: 'formularioVersaoId', required: false })
   @ApiQuery({ name: 'status', required: false, enum: SubmissaoStatus })
   @ApiQuery({ name: 'municipioId', required: false, type: Number })
   @ApiQuery({ name: 'regionalId', required: false })
+  @ApiQuery({ name: 'busca', required: false })
+  @ApiQuery({ name: 'dataInicio', required: false })
+  @ApiQuery({ name: 'dataFim', required: false })
   async enfileirar(
     @UsuarioAtual() usuario: JwtPayload,
-    @Query('competenciaId') competenciaId: string,
+    @Query('competenciaId') competenciaId?: string,
+    @Query('formularioVersaoId') formularioVersaoId?: string,
     @Query('status') status?: SubmissaoStatus,
     @Query('municipioId') municipioId?: string,
     @Query('regionalId') regionalId?: string,
+    @Query('busca') busca?: string,
+    @Query('dataInicio') dataInicio?: string,
+    @Query('dataFim') dataFim?: string,
   ): Promise<{ jobId: string }> {
     const jobId = await this.service.enfileirarExport(
       {
         competenciaId,
+        formularioVersaoId,
         status,
         municipioId: municipioId ? Number(municipioId) : undefined,
         regionalId,
+        busca,
+        dataInicio,
+        dataFim,
       },
-      usuario.sub,
+      usuario,
     );
     return { jobId };
   }

@@ -12,6 +12,7 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  LinearProgress,
   List,
   ListItem,
   ListItemText,
@@ -28,6 +29,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
+import { uploadAnexo } from "../../lib/uploadR2";
 import { useAuth } from "../../lib/auth-context";
 import type { SchemaFormulario } from "@dcmg/contracts";
 
@@ -100,6 +102,7 @@ export default function SubmissaoDetalhe() {
   const [dialogAcao, setDialogAcao] = useState<string | null>(null);
   const [comentario, setComentario] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [progressoUpload, setProgressoUpload] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["submissao", id],
@@ -137,12 +140,11 @@ export default function SubmissaoDetalhe() {
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => {
-      const fd = new FormData();
-      fd.append("arquivo", file);
-      return api.post(`/submissoes/${id}/anexos`, fd);
+      if (!id) throw new Error("ID da submissão não disponível.");
+      return uploadAnexo(id, file, undefined, setProgressoUpload);
     },
-    onSuccess: () => { invalida(); setErro(null); },
-    onError: (e: unknown) => setErro((e as Error).message),
+    onSuccess: () => { invalida(); setErro(null); setProgressoUpload(null); },
+    onError: (e: unknown) => { setErro((e as Error).message); setProgressoUpload(null); },
   });
 
   const removerAnexo = useMutation({
@@ -316,6 +318,14 @@ export default function SubmissaoDetalhe() {
           <Typography variant="caption" color="text.secondary">
             Tipos aceitos: PDF, DOCX, XLSX, ZIP, PNG, JPG · Geoespaciais: KML, KMZ, SHP, GeoJSON.
           </Typography>
+          {progressoUpload !== null && (
+            <Box sx={{ mt: 1, mb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">
+                Enviando… {progressoUpload}%
+              </Typography>
+              <LinearProgress variant="determinate" value={progressoUpload} sx={{ mt: 0.5 }} />
+            </Box>
+          )}
           <List dense>
             {data.anexos.map((a) => (
               <ListItem

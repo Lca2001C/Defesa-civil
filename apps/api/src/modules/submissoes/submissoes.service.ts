@@ -12,6 +12,7 @@ import {
   SubmissaoStatus,
   TipoPergunta,
 } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -19,11 +20,20 @@ import { FormulariosService } from '../formularios/formularios.service';
 import { StorageService } from '../../infra/storage/storage.service';
 import { NotificacoesService } from '../notificacoes/notificacoes.service';
 import { prefixoCachePainel } from '../painel/painel.service';
+import { PART_SIZE_BYTES } from '../../infra/storage/storage.service';
+import type { Env } from '../../config/env.validation';
 import type { PaginacaoDto } from '../../common/dto/paginacao.dto';
 import type { JwtPayload } from '../../common/types/jwt-payload';
 import type { CriarSubmissaoDto } from './dto/criar-submissao.dto';
 import type { AtualizarSubmissaoDto } from './dto/atualizar-submissao.dto';
 import type { RevisaoDto } from './dto/revisao.dto';
+import type {
+  IniciarMultipartDto,
+  AssinarParteDto,
+  CompletarMultipartDto,
+  AbortarMultipartDto,
+} from './dto/anexo-multipart.dto';
+import { montarWhereSubmissoes, type FiltrosSubmissao } from './submissoes-where.util';
 
 type StatusMapa = 'RESPONDIDO' | 'EM_PREENCHIMENTO' | 'NAO_RESPONDEU';
 
@@ -44,14 +54,31 @@ const MIME_ANEXO_PERMITIDOS = new Set([
   'application/xml',                       // KML via content-type genérico
   'text/xml',                              // KML via content-type texto
   'application/json',                      // GeoJSON / JSON
-  'application/octet-stream',              // SHP (sem MIME padrão)
+  'application/octet-stream',              // SHP (sem MIME padrão) / binários grandes
   'application/x-shapefile',               // SHP alternativo
+  // Mídia / raster (anexos grandes: vídeos, imagens de satélite/dron, áudio)
+  'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm',
+  'image/tiff', 'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'audio/mpeg', 'audio/wav',
+  'application/gzip', 'application/x-7z-compressed', 'application/x-rar-compressed',
+  'text/csv', 'text/plain',
 ]);
 const EXT_ANEXO_PERMITIDAS = [
   '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.zip', '.png', '.jpg', '.jpeg',
   // Geoespaciais
   '.kml', '.kmz', '.json', '.geojson', '.shp', '.dbf', '.shx', '.prj',
+  // Mídia / raster / arquivos grandes
+  '.mp4', '.mov', '.avi', '.mkv', '.webm', '.tif', '.tiff', '.gif', '.webp',
+  '.mp3', '.wav', '.gz', '.7z', '.rar', '.csv', '.txt',
 ];
+
+/** Valida tipo de arquivo pelo MIME OU extensão (aceita se qualquer um casar). */
+function tipoArquivoPermitido(nomeOriginal: string, mimeType?: string): boolean {
+  const ext = nomeOriginal.slice(nomeOriginal.lastIndexOf('.')).toLowerCase();
+  const mimeOk = !!mimeType && MIME_ANEXO_PERMITIDOS.has(mimeType);
+  const extOk = EXT_ANEXO_PERMITIDAS.includes(ext);
+  return mimeOk || extOk;
+}
 
 @Injectable()
 export class SubmissoesService {
@@ -62,7 +89,13 @@ export class SubmissoesService {
     private readonly formularios: FormulariosService,
     private readonly storage: StorageService,
     private readonly redis: RedisService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
+
+  /** Limite de upload em bytes (MAX_UPLOAD_MB). */
+  private get maxUploadBytes(): number {
+    return this.config.get('MAX_UPLOAD_MB', { infer: true }) * 1024 * 1024;
+  }
 
   // ------------------------------------------------------------------ criar --
 
@@ -149,35 +182,15 @@ export class SubmissoesService {
 
   async listar(
     paginacao: PaginacaoDto,
-    filtros: {
-      competenciaId?: string;
-      formularioVersaoId?: string;
-      municipioId?: number;
-      status?: SubmissaoStatus;
-    },
+    filtros: FiltrosSubmissao,
     usuario: JwtPayload,
   ) {
     const pagina = paginacao.pagina ?? 1;
     const porPagina = paginacao.porPagina ?? 20;
     const skip = (pagina - 1) * porPagina;
 
-    const where: Prisma.SubmissaoWhereInput = {
-      ...(filtros.competenciaId ? { competenciaId: filtros.competenciaId } : {}),
-      ...(filtros.formularioVersaoId ? { formularioVersaoId: filtros.formularioVersaoId } : {}),
-      ...(filtros.municipioId ? { municipioId: filtros.municipioId } : {}),
-      ...(filtros.status ? { status: filtros.status } : {}),
-    };
-
-    if (usuario.escopo === 'MUNICIPAL' && usuario.municipioId) {
-      where.municipioId = usuario.municipioId;
-    } else if (usuario.escopo === 'REGIONAL' && usuario.regionalId) {
-      where.municipio = { regionalId: usuario.regionalId };
-    }
-
-    // Usuários abaixo de ADMIN_MUNICIPAL (nivel < 50) só visualizam as próprias submissões.
-    if (usuario.perfilNivel < 50) {
-      where.autorId = usuario.sub;
-    }
+    // Filtros + busca + escopo/RBAC (helper compartilhado com a exportação).
+    const where = montarWhereSubmissoes(filtros, usuario);
 
     const [items, total] = await Promise.all([
       this.prisma.submissao.findMany({
@@ -186,10 +199,14 @@ export class SubmissoesService {
         take: porPagina,
         orderBy: { criadoEm: 'desc' },
         include: {
-          municipio: { select: { nome: true } },
+          municipio: {
+            select: { id: true, nome: true, regional: { select: { nome: true } } },
+          },
+          competencia: { select: { nome: true } },
           formularioVersao: {
             select: { versao: true, formulario: { select: { nome: true } } },
           },
+          autor: { select: { nome: true } },
           _count: { select: { historico: true, anexos: true } },
         },
       }),
@@ -350,6 +367,7 @@ export class SubmissoesService {
     });
   }
 
+  /** Upload legado (via servidor, em memória) — usado no modo local/dev. */
   async adicionarAnexo(
     id: string,
     arquivo: { buffer: Buffer; originalname: string; mimetype: string; size: number },
@@ -359,16 +377,13 @@ export class SubmissoesService {
     await this.carregarParaEscopo(id, usuario);
     if (!arquivo) throw new BadRequestException('Arquivo obrigatório.');
 
-    const ext = arquivo.originalname.slice(arquivo.originalname.lastIndexOf('.')).toLowerCase();
-    const mimeOk = MIME_ANEXO_PERMITIDOS.has(arquivo.mimetype);
-    const extOk = EXT_ANEXO_PERMITIDAS.includes(ext);
-    if (!mimeOk && !extOk) {
-      throw new BadRequestException('Tipo de arquivo não permitido. Aceitos: PDF, DOCX, XLSX, ZIP, PNG, JPG.');
+    if (!tipoArquivoPermitido(arquivo.originalname, arquivo.mimetype)) {
+      throw new BadRequestException('Tipo de arquivo não permitido.');
     }
-
-    const maxMb = 25;
-    if (arquivo.size > maxMb * 1024 * 1024) {
-      throw new BadRequestException(`Arquivo excede o limite de ${maxMb} MB.`);
+    if (arquivo.size > this.maxUploadBytes) {
+      throw new BadRequestException(
+        `Arquivo excede o limite de ${this.config.get('MAX_UPLOAD_MB', { infer: true })} MB.`,
+      );
     }
 
     const arq = await this.storage.salvar(arquivo.buffer, arquivo.originalname, arquivo.mimetype);
@@ -376,6 +391,91 @@ export class SubmissoesService {
       data: { submissaoId: id, arquivoId: arq.id, perguntaCodigo: perguntaCodigo ?? null },
       include: { arquivo: true },
     });
+  }
+
+  // ── Upload multipart direto ao R2 (anexos grandes, até 50 GB) ──────────────
+
+  /**
+   * Inicia o upload. No modo S3/R2 retorna chave + uploadId + partSize para o
+   * navegador enviar as partes direto ao bucket. No modo local, sinaliza que o
+   * frontend deve usar o caminho legado (POST :id/anexos via FormData).
+   */
+  async iniciarAnexoMultipart(id: string, dto: IniciarMultipartDto, usuario: JwtPayload) {
+    await this.carregarParaEscopo(id, usuario);
+
+    if (!tipoArquivoPermitido(dto.nomeOriginal, dto.mimeType)) {
+      throw new BadRequestException('Tipo de arquivo não permitido.');
+    }
+    if (dto.tamanhoBytes > this.maxUploadBytes) {
+      throw new BadRequestException(
+        `Arquivo excede o limite de ${this.config.get('MAX_UPLOAD_MB', { infer: true })} MB.`,
+      );
+    }
+
+    if (!this.storage.suportaPresigned) {
+      return { modo: 'local' as const };
+    }
+
+    const { chave, uploadId } = await this.storage.iniciarMultipart(dto.nomeOriginal, dto.mimeType);
+    return { modo: 's3' as const, chave, uploadId, partSize: PART_SIZE_BYTES };
+  }
+
+  /** Assina UMA parte do upload multipart (URL PUT direta ao R2). */
+  async assinarParteAnexo(id: string, dto: AssinarParteDto, usuario: JwtPayload) {
+    await this.carregarParaEscopo(id, usuario);
+    const url = await this.storage.assinarParte(dto.chave, dto.uploadId, dto.numeroParte);
+    return { url };
+  }
+
+  /** Conclui o multipart, registra o Arquivo e cria o AnexoSubmissao. */
+  async completarAnexoMultipart(id: string, dto: CompletarMultipartDto, usuario: JwtPayload) {
+    await this.carregarParaEscopo(id, usuario);
+
+    if (!tipoArquivoPermitido(dto.nomeOriginal, dto.mimeType)) {
+      throw new BadRequestException('Tipo de arquivo não permitido.');
+    }
+
+    await this.storage.completarMultipart(
+      dto.chave,
+      dto.uploadId,
+      dto.partes.map((p) => ({ numero: p.numero, etag: p.etag })),
+    );
+
+    const arq = await this.storage.registrarArquivo({
+      chave: dto.chave,
+      nomeOriginal: dto.nomeOriginal,
+      mimeType: dto.mimeType,
+      tamanhoBytes: dto.tamanhoBytes,
+    });
+
+    return this.prisma.anexoSubmissao.create({
+      data: { submissaoId: id, arquivoId: arq.id, perguntaCodigo: dto.perguntaCodigo ?? null },
+      include: { arquivo: true },
+    });
+  }
+
+  /** Aborta um upload multipart (cancelamento/erro no cliente). */
+  async abortarAnexoMultipart(id: string, dto: AbortarMultipartDto, usuario: JwtPayload) {
+    await this.carregarParaEscopo(id, usuario);
+    await this.storage.abortarMultipart(dto.chave, dto.uploadId);
+    return { ok: true };
+  }
+
+  /** URL de download do anexo: presigned GET (S3/R2) — direto do bucket. */
+  async urlDownloadAnexo(id: string, anexoId: string, usuario: JwtPayload) {
+    await this.carregarParaEscopo(id, usuario);
+    const anexo = await this.prisma.anexoSubmissao.findUnique({
+      where: { id: anexoId },
+      include: { arquivo: true },
+    });
+    if (!anexo || anexo.submissaoId !== id) {
+      throw new NotFoundException('Anexo não encontrado nesta submissão.');
+    }
+    if (!this.storage.suportaPresigned) {
+      throw new BadRequestException('Download direto disponível apenas com storage S3/R2.');
+    }
+    const url = await this.storage.assinarDownload(anexo.arquivo.chave, anexo.arquivo.nomeOriginal);
+    return { url };
   }
 
   async excluir(id: string, usuario: JwtPayload) {

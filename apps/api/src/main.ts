@@ -16,6 +16,14 @@ import { WsRedisAdapter } from './infra/realtime/ws-redis.adapter';
  * Toda a configuracao vem de variaveis de ambiente (principio
  * "build once, deploy anywhere"): nada de host/porta fixos no codigo.
  */
+// Serializa BigInt como número no JSON (ex.: Arquivo.tamanhoBytes até 50 GB,
+// bem abaixo de 2^53). Sem isto, JSON.stringify lança em respostas com BigInt.
+(BigInt.prototype as unknown as { toJSON: () => number }).toJSON = function (
+  this: bigint,
+) {
+  return Number(this);
+};
+
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule, { bufferLogs: false });

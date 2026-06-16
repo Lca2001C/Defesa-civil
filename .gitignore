@@ -18,6 +18,12 @@ coverage/
 # Certificados de TLS gerados localmente para o Nginx
 infra/nginx/certs/
 
+# Binário do ngrok (baixado pelo host no start-dev; ~32MB, não versionar)
+infra/ngrok/bin/
+
+# URL pública gerada pelo ngrok
+.ngrok-url
+
 # Artefatos do Prisma gerados em runtime de dev
 **/prisma/generated/
 
