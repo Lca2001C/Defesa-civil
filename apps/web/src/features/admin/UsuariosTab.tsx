@@ -32,6 +32,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
+import { mascaraCpf } from "../../shared/utils";
 import UsuarioFormDialog from "./UsuarioFormDialog";
 
 interface Usuario {
@@ -45,10 +46,6 @@ interface Usuario {
   perfil: { nome: string; codigo: string; nivel: number };
   municipio: { nome: string } | null;
   regional: { nome: string } | null;
-}
-
-function mascaraCpf(cpf: string): string {
-  return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "***.$2.$3-**");
 }
 
 export default function UsuariosTab() {

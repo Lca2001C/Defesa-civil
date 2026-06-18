@@ -1,5 +1,6 @@
 import { Prisma, SubmissaoStatus } from '@prisma/client';
 import type { JwtPayload } from '../../common/types/jwt-payload';
+import { PERMISSION_LEVEL } from '../../shared/constants';
 
 /** Filtros aceitos tanto na listagem quanto na exportação de submissões. */
 export interface FiltrosSubmissao {
@@ -81,7 +82,7 @@ export function montarWhereSubmissoes(
     where.municipio = municipioCond;
   }
 
-  if (usuario.perfilNivel < 50) {
+  if (usuario.perfilNivel < PERMISSION_LEVEL.ADMIN_MUNICIPAL) {
     where.autorId = usuario.sub;
   }
 

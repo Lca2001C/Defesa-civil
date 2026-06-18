@@ -31,6 +31,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { uploadAnexo } from "../../lib/uploadR2";
 import { useAuth } from "../../lib/auth-context";
+import { ACCEPT_TIPOS } from "../../shared/constants";
 import type { SchemaFormulario } from "@dcmg/contracts";
 
 interface HistoricoItem {
@@ -307,7 +308,7 @@ export default function SubmissaoDetalhe() {
               ref={inputRef}
               type="file"
               hidden
-              accept=".pdf,.docx,.doc,.xlsx,.xls,.zip,.png,.jpg,.jpeg,.kml,.kmz,.json,.geojson,.shp,.dbf,.shx,.prj"
+              accept={ACCEPT_TIPOS}
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) uploadMutation.mutate(f);

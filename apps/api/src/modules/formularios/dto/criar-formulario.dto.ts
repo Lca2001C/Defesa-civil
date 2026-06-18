@@ -20,7 +20,7 @@ export class CriarFormularioDto {
   @MaxLength(100)
   categoria?: string;
 
-  @ApiPropertyOptional({ description: 'Schema gerado pelo parser Excel. Se fornecido, cria a versão 1 (rascunho) automaticamente.' })
+  @ApiPropertyOptional({ description: 'Schema do construtor visual. Se fornecido, cria a versão 1 (rascunho) automaticamente.' })
   @IsOptional()
   @IsObject()
   schema?: Record<string, unknown>;

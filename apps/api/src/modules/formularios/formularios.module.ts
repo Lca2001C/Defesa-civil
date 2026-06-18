@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { FormulariosController } from './formularios.controller';
-import { FormulariosService } from './formularios.service';
+import { FormulariosController } from './controllers/formularios.controller';
+import { FormulariosService } from './services/formularios.service';
+import { FormulariosRepository } from './repositories/formularios.repository';
 
 @Module({
   controllers: [FormulariosController],
-  providers: [FormulariosService],
+  providers: [FormulariosService, FormulariosRepository],
   exports: [FormulariosService],
 })
 export class FormulariosModule {}

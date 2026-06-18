@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { PainelService } from './painel.service';
-import { PainelController } from './painel.controller';
+import { PainelController } from './controllers/painel.controller';
+import { PainelService } from './services/painel.service';
+import { PainelRepository } from './repositories/painel.repository';
 
 @Module({
-  providers: [PainelService],
   controllers: [PainelController],
+  providers: [PainelService, PainelRepository],
   exports: [PainelService],
 })
 export class PainelModule {}

@@ -12,9 +12,7 @@ import UploadFileIcon from "@mui/icons-material/UploadFile";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DeleteIcon from "@mui/icons-material/Delete";
 import type { FieldProps } from "../types";
-
-const ACCEPT_TIPOS =
-  ".pdf,.docx,.doc,.xlsx,.xls,.zip,.png,.jpg,.jpeg,.kml,.kmz,.json,.geojson,.shp,.dbf,.shx,.prj";
+import { ACCEPT_TIPOS } from "../../../shared/constants";
 
 export function CampoArquivo({ campo, field, error, onUpload }: FieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);

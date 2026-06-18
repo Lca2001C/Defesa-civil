@@ -7,7 +7,7 @@
 //  - Competencia (periodo de coleta) — vinculo obrigatorio em form/submissao
 //  - Motor de formularios (Formulario / FormularioVersao com schema JSONB)
 //  - Submissao (snapshot do respondente + protocolo + dados JSONB) e revisao
-//  - Importacao em massa (lote + erros) e geracao atomica de protocolo
+//  - Geracao atomica de protocolo (ProtocoloSequencia)
 //  - Arquivo (storage) e LogAuditoria
 //
 // Convencoes: campos em camelCase no Prisma; colunas/tabelas em snake_case

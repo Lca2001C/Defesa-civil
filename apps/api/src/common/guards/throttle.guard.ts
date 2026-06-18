@@ -9,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import type { Env } from '../../config/env.validation';
 import { RedisService } from '../../infra/redis/redis.service';
+import { extrairIp } from '../../shared/utils/format.util';
+import { REDIS_RATE_LIMIT_PREFIX } from '../../shared/constants';
 
 /**
  * Guard de rate limiting por IP usando Redis (janela fixa).
@@ -48,13 +50,10 @@ export class ThrottleGuard implements CanActivate {
       return true;
     }
 
-    const ip =
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
-      req.ip ??
-      'unknown';
+    const ip = extrairIp(req);
 
     const janela = Math.floor(Date.now() / 1000 / this.ttl);
-    const chave = `rl:${ip}:${janela}`;
+    const chave = `${REDIS_RATE_LIMIT_PREFIX}${ip}:${janela}`;
     const client = this.redis.getClient();
 
     const pipeline = client.pipeline();

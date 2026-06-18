@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { RelatoriosController } from './relatorios.controller';
-import { RelatoriosService, RELATORIOS_QUEUE } from './relatorios.service';
+import { RelatoriosController } from './controllers/relatorios.controller';
+import { RelatoriosService, RELATORIOS_QUEUE } from './services/relatorios.service';
+import { RelatoriosRepository } from './repositories/relatorios.repository';
 import { RelatoriosProcessor } from './relatorios.processor';
 
 @Module({
   imports: [BullModule.registerQueue({ name: RELATORIOS_QUEUE })],
   controllers: [RelatoriosController],
-  providers: [RelatoriosService, RelatoriosProcessor],
+  providers: [RelatoriosService, RelatoriosRepository, RelatoriosProcessor],
 })
 export class RelatoriosModule {}

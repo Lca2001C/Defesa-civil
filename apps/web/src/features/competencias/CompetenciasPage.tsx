@@ -21,17 +21,10 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EventIcon from "@mui/icons-material/Event";
-import { api, ApiError } from "../../lib/api";
+import { ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
-
-interface Competencia {
-  id: string;
-  nome: string;
-  ano: number;
-  dataInicio: string;
-  dataFim: string;
-  status: "PLANEJADA" | "ABERTA" | "ENCERRADA";
-}
+import { QUERY_KEYS } from "../../shared/constants";
+import { CompetenciasService } from "./services/competencias.service";
 
 const COR_STATUS: Record<string, "default" | "success" | "warning"> = {
   PLANEJADA: "warning",
@@ -56,16 +49,15 @@ export default function CompetenciasPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["competencias"],
-    queryFn: () =>
-      api.get<{ items: Competencia[] }>("/competencias?porPagina=100").then((r) => r.items),
+    queryKey: [QUERY_KEYS.COMPETENCIAS],
+    queryFn: () => CompetenciasService.listar(),
   });
 
-  const invalida = () => qc.invalidateQueries({ queryKey: ["competencias"] });
+  const invalida = () => qc.invalidateQueries({ queryKey: [QUERY_KEYS.COMPETENCIAS] });
 
   const criar = useMutation({
     mutationFn: () =>
-      api.post("/competencias", {
+      CompetenciasService.criar({
         nome: form.nome,
         ano: Number(form.ano),
         dataInicio: form.dataInicio,
@@ -81,13 +73,13 @@ export default function CompetenciasPage() {
   });
 
   const abrir = useMutation({
-    mutationFn: (id: string) => api.patch(`/competencias/${id}/abrir`, {}),
+    mutationFn: (id: string) => CompetenciasService.abrir(id),
     onSuccess: invalida,
     onError: (e) => setErro(e instanceof ApiError ? e.message : "Erro ao abrir competência."),
   });
 
   const encerrar = useMutation({
-    mutationFn: (id: string) => api.patch(`/competencias/${id}/encerrar`, {}),
+    mutationFn: (id: string) => CompetenciasService.encerrar(id),
     onSuccess: invalida,
     onError: (e) => setErro(e instanceof ApiError ? e.message : "Erro ao encerrar competência."),
   });

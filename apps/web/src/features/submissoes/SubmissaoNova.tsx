@@ -29,6 +29,7 @@ import { uploadAnexo } from "../../lib/uploadR2";
 import { DynamicForm } from "../../components/dynamic-form";
 import type { ArquivoUploadado } from "../../components/dynamic-form/types";
 import type { SchemaFormulario } from "@dcmg/contracts";
+import { ACCEPT_TIPOS } from "../../shared/constants";
 
 // ── tipos ────────────────────────────────────────────────────────────────────
 
@@ -60,9 +61,6 @@ interface MunicipioOpcao {
 // ── constantes ────────────────────────────────────────────────────────────────
 
 const PASSOS = ["Selecionar formulário", "Preencher resposta", "Confirmar e enviar"];
-
-const ACCEPT_TIPOS =
-  ".pdf,.docx,.doc,.xlsx,.xls,.zip,.png,.jpg,.jpeg,.kml,.kmz,.json,.geojson,.shp,.dbf,.shx,.prj";
 
 // ── componente ────────────────────────────────────────────────────────────────
 

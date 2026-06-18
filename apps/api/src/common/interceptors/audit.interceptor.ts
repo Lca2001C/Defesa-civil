@@ -8,6 +8,7 @@ import type { Request } from 'express';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { extrairIp } from '../../shared/utils/format.util';
 import type { JwtPayload } from '../types/jwt-payload';
 
 const METODOS_AUDITADOS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -79,10 +80,7 @@ export class AuditInterceptor implements NestInterceptor {
       const entidade = partes[0] ?? 'desconhecido';
       const entidadeId = partes[1] ?? null;
 
-      const ipBruto =
-        (req.headers['x-forwarded-for'] as string | undefined)
-          ?.split(',')[0]
-          ?.trim() ?? req.ip;
+      const ipBruto = extrairIp(req);
 
       // Extrai o ID gerado pelo servidor a partir da resposta quando possível
       const entidadeIdFinal =

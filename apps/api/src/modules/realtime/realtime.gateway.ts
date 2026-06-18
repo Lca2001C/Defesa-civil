@@ -12,7 +12,7 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/env.validation';
-import { PainelService } from '../painel/painel.service';
+import { PainelService } from '../painel/services/painel.service';
 
 /** Janela mínima entre broadcasts de stats por competência (anti-tempestade). */
 const STATS_THROTTLE_MS = 3000;
