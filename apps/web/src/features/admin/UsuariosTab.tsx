@@ -30,23 +30,12 @@ import EditIcon from "@mui/icons-material/Edit";
 import BlockIcon from "@mui/icons-material/Block";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { mascaraCpf } from "../../shared/utils";
+import { QUERY_KEYS } from "../../shared/constants";
+import { UsuariosService } from "./services/usuarios.service";
+import type { Usuario } from "./types";
 import UsuarioFormDialog from "./UsuarioFormDialog";
-
-interface Usuario {
-  id: string;
-  nome: string;
-  email: string;
-  cpf: string;
-  cargo: string | null;
-  escopo: string;
-  ativo: boolean;
-  perfil: { nome: string; codigo: string; nivel: number };
-  municipio: { nome: string } | null;
-  regional: { nome: string } | null;
-}
 
 export default function UsuariosTab() {
   const { usuario: usuarioAtual } = useAuth();
@@ -58,21 +47,20 @@ export default function UsuariosTab() {
   const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
   const { data: usuarios = [], isLoading } = useQuery<Usuario[]>({
-    queryKey: ["usuarios", ativoFiltro],
-    queryFn: () =>
-      api.get<Usuario[]>(`/usuarios?ativo=${ativoFiltro}`),
+    queryKey: [QUERY_KEYS.USUARIOS, ativoFiltro],
+    queryFn: () => UsuariosService.listar(ativoFiltro),
   });
 
   const mutarStatus = useMutation({
     mutationFn: ({ id, acao }: { id: string; acao: "ativar" | "desativar" }) =>
-      api.patch(`/usuarios/${id}/${acao}`, {}),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["usuarios"] }),
+      acao === "ativar" ? UsuariosService.ativar(id) : UsuariosService.desativar(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [QUERY_KEYS.USUARIOS] }),
   });
 
   const mutarExcluir = useMutation({
-    mutationFn: (id: string) => api.delete(`/usuarios/${id}`),
+    mutationFn: (id: string) => UsuariosService.excluir(id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["usuarios"] });
+      void qc.invalidateQueries({ queryKey: [QUERY_KEYS.USUARIOS] });
       setExcluindoUsuario(null);
       setErroExclusao(null);
     },

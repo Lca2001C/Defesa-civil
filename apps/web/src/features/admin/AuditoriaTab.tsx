@@ -21,24 +21,9 @@ import {
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import { api } from "../../lib/api";
-
-interface LogAuditoria {
-  id: string;
-  acao: string;
-  entidade: string;
-  entidadeId: string | null;
-  ip: string | null;
-  antes: Record<string, unknown> | null;
-  depois: Record<string, unknown> | null;
-  criadoEm: string;
-  ator?: { nome: string; email: string } | null;
-}
-
-interface ListagemLogs {
-  items: LogAuditoria[];
-  total: number;
-}
+import { QUERY_KEYS } from "../../shared/constants";
+import { AuditoriaService } from "./services/auditoria.service";
+import type { LogAuditoria } from "./types";
 
 const ENTIDADES = ["", "Submissao", "Usuario", "Formulario", "Competencia", "Compdec"];
 
@@ -142,12 +127,9 @@ function LinhaLog({ log }: { log: LogAuditoria }) {
 export default function AuditoriaTab() {
   const [entidade, setEntidade] = useState("");
 
-  const { data, isLoading } = useQuery<ListagemLogs>({
-    queryKey: ["auditoria", entidade],
-    queryFn: () =>
-      api.get<ListagemLogs>(
-        `/auditoria?porPagina=50${entidade ? `&entidade=${entidade}` : ""}`,
-      ),
+  const { data, isLoading } = useQuery({
+    queryKey: [QUERY_KEYS.AUDITORIA, entidade],
+    queryFn: () => AuditoriaService.listar(entidade || undefined),
   });
 
   const logs = data?.items ?? [];

@@ -24,38 +24,20 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../lib/api";
 import { uploadAnexo } from "../../lib/uploadR2";
 import { DynamicForm } from "../../components/dynamic-form";
 import type { ArquivoUploadado } from "../../components/dynamic-form/types";
-import type { SchemaFormulario } from "@dcmg/contracts";
 import { ACCEPT_TIPOS } from "../../shared/constants";
+import { SubmissoesService } from "./services/submissoes.service";
+import { FormulariosService } from "../formularios/services/formularios.service";
+import { MunicipiosService } from "../municipios/services/municipios.service";
 
 // ── tipos ────────────────────────────────────────────────────────────────────
-
-interface VersaoOpcao {
-  id: string;
-  versao: number;
-  formulario: { id: string; nome: string };
-  competencia: { id: string; nome: string } | null;
-}
-
-interface VersaoCompleta {
-  id: string;
-  versao: number;
-  schema: SchemaFormulario;
-  formulario: { nome: string };
-}
 
 interface ArquivoAnexado {
   id: string;
   nome: string;
   tamanhoKb?: number;
-}
-
-interface MunicipioOpcao {
-  id: number;
-  nome: string;
 }
 
 // ── constantes ────────────────────────────────────────────────────────────────
@@ -84,12 +66,12 @@ export default function SubmissaoNova() {
 
   const { data: versoes, isLoading: carregandoVersoes } = useQuery({
     queryKey: ["versoes-publicadas"],
-    queryFn: () => api.get<VersaoOpcao[]>("/formularios/versoes/publicadas"),
+    queryFn: () => FormulariosService.listarVersoesPublicadas(),
   });
 
   const { data: municipios = [], isLoading: carregandoMunicipios } = useQuery({
     queryKey: ["municipios-lista"],
-    queryFn: () => api.get<MunicipioOpcao[]>("/municipios/lista"),
+    queryFn: () => MunicipiosService.listarParaSelecao(),
     staleTime: 60 * 60 * 1000, // 1h — lista praticamente estática
   });
 
@@ -99,9 +81,7 @@ export default function SubmissaoNova() {
     queryKey: ["versao", versaoId],
     queryFn: () =>
       versaoSelecionada
-        ? api.get<VersaoCompleta>(
-            `/formularios/${versaoSelecionada.formulario.id}/versoes/${versaoId}`,
-          )
+        ? FormulariosService.buscarVersao(versaoSelecionada.formulario.id, versaoId)
         : null,
     enabled: !!versaoId && !!versaoSelecionada,
   });
@@ -115,7 +95,7 @@ export default function SubmissaoNova() {
     try {
       const compId = versaoSelecionada?.competencia?.id ?? "";
       if (!submissaoId) {
-        const sub = await api.post<{ id: string; protocolo: string }>("/submissoes", {
+        const sub = await SubmissoesService.criar({
           formularioVersaoId: versaoId,
           competenciaId: compId,
           municipioId: parseInt(municipioId, 10),
@@ -124,7 +104,7 @@ export default function SubmissaoNova() {
         });
         setSubmissaoId(sub.id);
       } else {
-        await api.patch(`/submissoes/${submissaoId}`, { dados: dadosForm });
+        await SubmissoesService.atualizarDados(submissaoId, dadosForm);
       }
       setPasso(2);
     } catch (e) {
@@ -154,7 +134,7 @@ export default function SubmissaoNova() {
 
   const removerArquivoMutation = useMutation({
     mutationFn: (arquivoId: string) =>
-      api.del(`/submissoes/${submissaoId}/anexos/${arquivoId}`),
+      SubmissoesService.removerAnexo(submissaoId!, arquivoId),
     onSuccess: (_, arquivoId) =>
       setArquivos((prev) => prev.filter((a) => a.id !== arquivoId)),
     onError: (e: unknown) => setErro((e as Error).message),
@@ -167,7 +147,7 @@ export default function SubmissaoNova() {
     let sid = submissaoId;
     if (!sid) {
       const compId = versaoSelecionada?.competencia?.id ?? "";
-      const sub = await api.post<{ id: string }>("/submissoes", {
+      const sub = await SubmissoesService.criar({
         formularioVersaoId: versaoId,
         competenciaId: compId,
         municipioId: parseInt(municipioId, 10),
@@ -193,7 +173,7 @@ export default function SubmissaoNova() {
   // ── mutation de envio ─────────────────────────────────────────────────────
 
   const enviarMutation = useMutation({
-    mutationFn: () => api.patch(`/submissoes/${submissaoId}/enviar`, {}),
+    mutationFn: () => SubmissoesService.enviar(submissaoId!),
     onSuccess: () => navigate(`/submissoes/${submissaoId}`),
     onError: (e: unknown) => setErro((e as Error).message),
   });

@@ -20,52 +20,11 @@ import { MapContainer, GeoJSON, TileLayer } from "react-leaflet";
 import type { GeoJsonObject, Feature } from "geojson";
 import type { Layer, PathOptions, LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { api } from "../../lib/api";
 import { cores } from "../../theme/tokens";
 import { usePainelSocket, type StatusUpdateEvento } from "../../hooks/usePainelSocket";
-
-// ── tipos ─────────────────────────────────────────────────────────────────────
-
-interface Competencia {
-  id: string;
-  nome: string;
-  status: string;
-}
-
-interface MunicipioStatus {
-  municipioId: number;
-  codigoIbge: string;
-  nome: string;
-  status: "RESPONDIDO" | "EM_PREENCHIMENTO" | "NAO_RESPONDEU";
-}
-
-interface Estatisticas {
-  respondido: number;
-  emPreenchimento: number;
-  naoRespondeu: number;
-  total: number;
-  percentual: number;
-}
-
-interface DrawerMunicipio {
-  municipio: {
-    id: number;
-    nome: string;
-    codigoIbge: string;
-  };
-  compdec: {
-    coordenadorNome?: string;
-    telefone?: string;
-    email?: string;
-  } | null;
-  submissoesRecentes: Array<{
-    id: string;
-    protocolo?: string;
-    status: string;
-    createdAt: string;
-    nomeRespondente?: string;
-  }>;
-}
+import { QUERY_KEYS } from "../../shared/constants";
+import { PainelService } from "./services/painel.service";
+import { CompetenciasService } from "../competencias/services/competencias.service";
 
 // ── cores de status ───────────────────────────────────────────────────────────
 
@@ -126,10 +85,9 @@ export default function PainelPage() {
   const geojsonLayerRef = useRef<{ [ibge: string]: Layer & { setStyle: (s: PathOptions) => void } }>({});
 
   // ── competências ──────────────────────────────────────────────────────────
-  const { data: competencias = [] } = useQuery<Competencia[]>({
-    queryKey: ["competencias"],
-    queryFn: () =>
-      api.get<{ items: Competencia[] }>("/competencias").then((r) => r.items),
+  const { data: competencias = [] } = useQuery({
+    queryKey: [QUERY_KEYS.COMPETENCIAS],
+    queryFn: () => CompetenciasService.listar(),
   });
 
   useEffect(() => {
@@ -140,9 +98,9 @@ export default function PainelPage() {
   }, [competencias, competenciaId]);
 
   // ── status municípios ─────────────────────────────────────────────────────
-  const { data: statusLista = [], isLoading: loadingStatus } = useQuery<MunicipioStatus[]>({
-    queryKey: ["painel", "status", competenciaId],
-    queryFn: () => api.get<MunicipioStatus[]>(`/painel/status?competenciaId=${competenciaId}`),
+  const { data: statusLista = [], isLoading: loadingStatus } = useQuery({
+    queryKey: [QUERY_KEYS.PAINEL, "status", competenciaId],
+    queryFn: () => PainelService.status(competenciaId),
     enabled: !!competenciaId,
     staleTime: 30_000,
   });
@@ -161,18 +119,17 @@ export default function PainelPage() {
   }, [statusLista]);
 
   // ── estatísticas ──────────────────────────────────────────────────────────
-  const { data: stats, refetch: refetchStats } = useQuery<Estatisticas>({
-    queryKey: ["painel", "stats", competenciaId],
-    queryFn: () => api.get<Estatisticas>(`/painel/stats?competenciaId=${competenciaId}`),
+  const { data: stats, refetch: refetchStats } = useQuery({
+    queryKey: [QUERY_KEYS.PAINEL, "stats", competenciaId],
+    queryFn: () => PainelService.stats(competenciaId),
     enabled: !!competenciaId,
     staleTime: 30_000,
   });
 
   // ── drawer município ──────────────────────────────────────────────────────
-  const { data: drawerData } = useQuery<DrawerMunicipio>({
-    queryKey: ["painel", "municipio", drawerMunicipioId, competenciaId],
-    queryFn: () =>
-      api.get<DrawerMunicipio>(`/painel/municipio/${drawerMunicipioId}?competenciaId=${competenciaId}`),
+  const { data: drawerData } = useQuery({
+    queryKey: [QUERY_KEYS.PAINEL, "municipio", drawerMunicipioId, competenciaId],
+    queryFn: () => PainelService.drawer(drawerMunicipioId!, competenciaId),
     enabled: drawerMunicipioId !== null && !!competenciaId,
   });
 

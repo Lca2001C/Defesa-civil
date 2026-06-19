@@ -31,26 +31,10 @@ import ShieldIcon from "@mui/icons-material/Shield";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import AssignmentIcon from "@mui/icons-material/Assignment";
-import { api, ApiError } from "../../lib/api";
+import { ApiError } from "../../lib/api";
 import { cores } from "../../theme/tokens";
-
-interface PerfilData {
-  id: string;
-  nome: string;
-  email: string;
-  cpf: string;
-  cargo: string | null;
-  telefone: string | null;
-  escopo: string;
-  ativo: boolean;
-  ultimoAcessoEm: string | null;
-  criadoEm: string;
-  perfil: { nome: string; codigo: string; nivel: number };
-  municipio: { id: number; nome: string } | null;
-  regional: { nome: string } | null;
-  uf: { sigla: string } | null;
-  _count: { submissoes: number };
-}
+import { PerfilService } from "./services/perfil.service";
+import type { PerfilData } from "./types";
 
 function dataFormatada(iso: string | null): string {
   if (!iso) return "—";
@@ -112,9 +96,9 @@ export default function PerfilPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [senhaOpen, setSenhaOpen] = useState(false);
 
-  const { data: perfil, isLoading } = useQuery<PerfilData>({
+  const { data: perfil, isLoading } = useQuery({
     queryKey: ["perfil", "me"],
-    queryFn: () => api.get<PerfilData>("/usuarios/me"),
+    queryFn: () => PerfilService.buscarMe(),
   });
 
   if (isLoading) {
@@ -360,7 +344,7 @@ function EditarDadosDialog({
   const [erro, setErro] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () => api.patch("/usuarios/me", { nome, cargo, telefone }),
+    mutationFn: () => PerfilService.atualizarMe({ nome, cargo, telefone }),
     onSuccess: () => {
       onSuccess();
       onClose();
@@ -444,7 +428,7 @@ function AlterarSenhaDialog({
     mutationFn: () => {
       if (novaSenha !== confirmar) throw new Error("As senhas não conferem.");
       if (novaSenha.length < 8) throw new Error("A senha precisa ter pelo menos 8 caracteres.");
-      return api.patch(`/usuarios/${usuarioId}/senha`, { novaSenha });
+      return PerfilService.alterarSenha(usuarioId, novaSenha);
     },
     onSuccess: () => setSucesso(true),
     onError: (e) => setErro(e instanceof Error ? e.message : "Erro ao alterar senha."),

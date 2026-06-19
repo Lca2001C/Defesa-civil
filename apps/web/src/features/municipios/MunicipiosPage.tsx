@@ -21,32 +21,9 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import EditIcon from "@mui/icons-material/Edit";
-import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
-
-interface Compdec {
-  coordenadorNome?: string | null;
-  telefone?: string | null;
-  email?: string | null;
-}
-
-interface Regional {
-  id: string;
-  nome: string;
-}
-
-interface Municipio {
-  id: number;
-  nome: string;
-  regional: Regional | null;
-  compdec: Compdec | null;
-}
-
-interface ListagemMunicipios {
-  items: Municipio[];
-  total: number;
-  totalPaginas: number;
-}
+import { QUERY_KEYS } from "../../shared/constants";
+import { MunicipiosService } from "./services/municipios.service";
 
 export default function MunicipiosPage() {
   const { usuario } = useAuth();
@@ -56,12 +33,9 @@ export default function MunicipiosPage() {
 
   const podeGerenciar = usuario?.permissoes.includes("municipios.gerenciar") ?? false;
 
-  const { data, isLoading } = useQuery<ListagemMunicipios>({
-    queryKey: ["municipios", nomeDebounced],
-    queryFn: () =>
-      api.get<ListagemMunicipios>(
-        `/municipios?porPagina=50${nomeDebounced ? `&nome=${encodeURIComponent(nomeDebounced)}` : ""}`,
-      ),
+  const { data, isLoading } = useQuery({
+    queryKey: [QUERY_KEYS.MUNICIPIOS, nomeDebounced],
+    queryFn: () => MunicipiosService.listar(nomeDebounced || undefined),
   });
 
   function handleNomeChange(valor: string) {

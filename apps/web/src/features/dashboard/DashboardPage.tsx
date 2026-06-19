@@ -23,53 +23,13 @@ import {
   Typography,
 } from "@mui/material";
 import DownloadIcon from "@mui/icons-material/Download";
-import { api } from "../../lib/api";
 import { runtimeConfig } from "../../lib/runtimeConfig";
 import { getAccessToken } from "../../lib/auth";
 import { useAuth } from "../../lib/auth-context";
 import { cores } from "../../theme/tokens";
-
-// ── tipos ─────────────────────────────────────────────────────────────────────
-
-interface Competencia {
-  id: string;
-  nome: string;
-  status: string;
-}
-
-interface Resumo {
-  total: number;
-  rascunho: number;
-  emPreenchimento: number;
-  enviada: number;
-  correcaoSolicitada: number;
-  revisada: number;
-  aprovada: number;
-  respondidas: number;
-  percentualCobertura: number;
-}
-
-interface TimelineItem {
-  data: string;
-  enviadas: number;
-  aprovadas: number;
-}
-
-interface PorRegional {
-  id: string;
-  nome: string;
-  total: number;
-  aprovadas: number;
-}
-
-interface PorFormulario {
-  formularioVersaoId: string;
-  formularioId: string;
-  nome: string;
-  versao: number;
-  total: number;
-  aprovadas: number;
-}
+import { QUERY_KEYS } from "../../shared/constants";
+import { DashboardService } from "./services/dashboard.service";
+import { CompetenciasService } from "../competencias/services/competencias.service";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -105,10 +65,9 @@ export default function DashboardPage() {
   const [competenciaId, setCompetenciaId] = useState("");
   const [exportando, setExportando] = useState(false);
 
-  const { data: competencias = [] } = useQuery<Competencia[]>({
-    queryKey: ["competencias"],
-    queryFn: () =>
-      api.get<{ items: Competencia[] }>("/competencias").then((r) => r.items),
+  const { data: competencias = [] } = useQuery({
+    queryKey: [QUERY_KEYS.COMPETENCIAS],
+    queryFn: () => CompetenciasService.listar(),
   });
 
   useEffect(() => {
@@ -118,27 +77,27 @@ export default function DashboardPage() {
     }
   }, [competencias, competenciaId]);
 
-  const { data: resumo, isLoading: loadingResumo } = useQuery<Resumo>({
-    queryKey: ["dashboard", "resumo", competenciaId],
-    queryFn: () => api.get<Resumo>(`/dashboard/resumo?competenciaId=${competenciaId}`),
+  const { data: resumo, isLoading: loadingResumo } = useQuery({
+    queryKey: [QUERY_KEYS.DASHBOARD, "resumo", competenciaId],
+    queryFn: () => DashboardService.resumo(competenciaId),
     enabled: !!competenciaId,
   });
 
-  const { data: timeline = [] } = useQuery<TimelineItem[]>({
-    queryKey: ["dashboard", "timeline", competenciaId],
-    queryFn: () => api.get<TimelineItem[]>(`/dashboard/timeline?competenciaId=${competenciaId}&dias=30`),
+  const { data: timeline = [] } = useQuery({
+    queryKey: [QUERY_KEYS.DASHBOARD, "timeline", competenciaId],
+    queryFn: () => DashboardService.timeline(competenciaId, 30),
     enabled: !!competenciaId,
   });
 
-  const { data: porRegional = [] } = useQuery<PorRegional[]>({
-    queryKey: ["dashboard", "por-regional", competenciaId],
-    queryFn: () => api.get<PorRegional[]>(`/dashboard/por-regional?competenciaId=${competenciaId}`),
+  const { data: porRegional = [] } = useQuery({
+    queryKey: [QUERY_KEYS.DASHBOARD, "por-regional", competenciaId],
+    queryFn: () => DashboardService.porRegional(competenciaId),
     enabled: !!competenciaId,
   });
 
-  const { data: porFormulario = [] } = useQuery<PorFormulario[]>({
-    queryKey: ["dashboard", "por-formulario", competenciaId],
-    queryFn: () => api.get<PorFormulario[]>(`/dashboard/por-formulario?competenciaId=${competenciaId}`),
+  const { data: porFormulario = [] } = useQuery({
+    queryKey: [QUERY_KEYS.DASHBOARD, "por-formulario", competenciaId],
+    queryFn: () => DashboardService.porFormulario(competenciaId),
     enabled: !!competenciaId,
   });
 
@@ -147,16 +106,12 @@ export default function DashboardPage() {
     setExportando(true);
     try {
       // 1) Enfileira o job de exportação
-      const { jobId } = await api.post<{ jobId: string }>(
-        `/relatorios/submissoes/export?competenciaId=${competenciaId}`,
-      );
+      const { jobId } = await DashboardService.enfileirarExport(competenciaId);
 
       // 2) Polling do estado do job (~1,5s)
       const aguardar = (ms: number) => new Promise((r) => setTimeout(r, ms));
       for (let tentativa = 0; tentativa < 200; tentativa++) {
-        const status = await api.get<{ estado: string; progresso: number }>(
-          `/relatorios/export/${jobId}`,
-        );
+        const status = await DashboardService.consultarExport(jobId);
         if (status.estado === "completed") break;
         if (status.estado === "failed") throw new Error("A geração do relatório falhou.");
         await aguardar(1500);

@@ -21,23 +21,10 @@ import {
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PublishIcon from "@mui/icons-material/Publish";
 import type { SchemaFormulario } from "@dcmg/contracts";
-import { api, ApiError } from "../../lib/api";
+import { ApiError } from "../../lib/api";
 import { FormularioBuilder } from "./builder/FormularioBuilder";
-
-interface VersaoData {
-  id: string;
-  versao: number;
-  status: string;
-  competenciaId: string | null;
-  formulario: { id: string; nome: string };
-  schema: SchemaFormulario;
-}
-
-interface Competencia {
-  id: string;
-  nome: string;
-  status: string;
-}
+import { FormulariosService } from "./services/formularios.service";
+import { CompetenciasService } from "../competencias/services/competencias.service";
 
 export default function FormularioEditar() {
   const { id, versaoId } = useParams<{ id: string; versaoId: string }>();
@@ -49,19 +36,19 @@ export default function FormularioEditar() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["versao-editar", id, versaoId],
-    queryFn: () => api.get<VersaoData>(`/formularios/${id}/versoes/${versaoId}`),
+    queryFn: () => FormulariosService.buscarVersao(id!, versaoId!),
     enabled: !!id && !!versaoId,
   });
 
   const { data: competencias } = useQuery({
     queryKey: ["competencias-abertas"],
-    queryFn: () => api.get<{ items: Competencia[] }>("/competencias?status=ABERTA&porPagina=100").then((r) => r.items),
+    queryFn: () => CompetenciasService.listarAbertas(),
     enabled: publicarAberto,
   });
 
   const salvar = useMutation({
     mutationFn: (schema: SchemaFormulario) =>
-      api.put<VersaoData>(`/formularios/${id}/versoes/${versaoId}`, { schema }),
+      FormulariosService.salvarVersao(id!, versaoId!, schema),
     onSuccess: (resp) => {
       setErro(null);
       queryClient.invalidateQueries({ queryKey: ["formularios"] });
@@ -76,8 +63,7 @@ export default function FormularioEditar() {
   });
 
   const publicar = useMutation({
-    mutationFn: () =>
-      api.patch(`/formularios/${id}/versoes/${versaoId}/publicar`, { competenciaId }),
+    mutationFn: () => FormulariosService.publicarVersao(id!, versaoId!, competenciaId),
     onSuccess: () => {
       setPublicarAberto(false);
       navigate(`/formularios/${id}`);

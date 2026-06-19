@@ -21,19 +21,9 @@ import {
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import LibraryBooksIcon from "@mui/icons-material/LibraryBooks";
-import { api, ApiError } from "../../lib/api";
-
-interface CriacaoResp {
-  id: string;
-  versaoInicialId: string;
-}
-
-interface Template {
-  id: string;
-  nome: string;
-  descricao: string | null;
-  categoria: string | null;
-}
+import { ApiError } from "../../lib/api";
+import { FormulariosService } from "./services/formularios.service";
+import type { CriacaoResp } from "./types";
 
 const CATEGORIAS = [
   "Diagnóstico",
@@ -53,7 +43,7 @@ export default function FormularioNovo() {
 
   const { data: templates } = useQuery({
     queryKey: ["templates"],
-    queryFn: () => api.get<Template[]>("/formularios/templates"),
+    queryFn: () => FormulariosService.listarTemplates(),
   });
 
   function irParaEditor(resp: CriacaoResp) {
@@ -61,13 +51,13 @@ export default function FormularioNovo() {
   }
 
   const criarBranco = useMutation({
-    mutationFn: () => api.post<CriacaoResp>("/formularios", { nome, descricao, categoria }),
+    mutationFn: () => FormulariosService.criar({ nome, descricao, categoria }),
     onSuccess: irParaEditor,
     onError: (e) => setErro(e instanceof ApiError ? e.message : "Erro ao criar o formulário."),
   });
 
   const criarDeTemplate = useMutation({
-    mutationFn: (templateId: string) => api.post<CriacaoResp>(`/formularios/from-template/${templateId}`),
+    mutationFn: (templateId: string) => FormulariosService.criarDeTemplate(templateId),
     onSuccess: irParaEditor,
     onError: (e) => setErro(e instanceof ApiError ? e.message : "Erro ao criar a partir do template."),
   });

@@ -10,8 +10,9 @@ import {
   Typography,
 } from "@mui/material";
 import { Link } from "react-router-dom";
-import { api, ApiError } from "../../lib/api";
+import { ApiError } from "../../lib/api";
 import { cores } from "../../theme/tokens";
+import { AuthService } from "./services/auth.service";
 
 export default function RecuperarSenhaPage() {
   const [email, setEmail] = useState("");
@@ -24,7 +25,7 @@ export default function RecuperarSenhaPage() {
     setErro(null);
     setCarregando(true);
     try {
-      await api.post("/auth/recuperar-senha/solicitar", { email });
+      await AuthService.solicitarRecuperacao(email);
       setEnviado(true);
     } catch (err) {
       setErro(

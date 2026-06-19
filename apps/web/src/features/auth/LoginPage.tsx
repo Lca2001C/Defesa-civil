@@ -26,19 +26,10 @@ import {
 import CloseIcon from "@mui/icons-material/Close";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../lib/auth-context";
-import { api, ApiError } from "../../lib/api";
+import { ApiError } from "../../lib/api";
 import { cores } from "../../theme/tokens";
-
-interface TokensResposta {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-}
-
-interface TermoLgpd {
-  versao: string;
-  conteudo: string;
-}
+import { AuthService } from "./services/auth.service";
+import type { TermoLgpd, RegistrarPayload } from "./types";
 
 // ── Aba Entrar ────────────────────────────────────────────────────────────────
 
@@ -58,7 +49,7 @@ function AbaEntrar() {
     setErro(null);
     setCarregando(true);
     try {
-      const resp = await api.post<TokensResposta>("/auth/login", { email, senha });
+      const resp = await AuthService.login(email, senha);
       salvarTokens(resp.accessToken, resp.refreshToken);
       navigate(destino, { replace: true });
     } catch (err) {
@@ -161,7 +152,7 @@ function AbaCriarConta() {
     if (termo) { setTermoAberto(true); return; }
     setCarregandoTermo(true);
     try {
-      const t = await api.get<TermoLgpd>("/auth/termos-lgpd/atual");
+      const t = await AuthService.termoAtual();
       setTermo(t);
       setTermoAberto(true);
     } catch {
@@ -178,7 +169,7 @@ function AbaCriarConta() {
 
     setCarregando(true);
     try {
-      const payload: Record<string, unknown> = {
+      const payload: RegistrarPayload = {
         nome: form.nome,
         cpf: form.cpf,
         email: form.email,
@@ -188,10 +179,10 @@ function AbaCriarConta() {
         aceiteTermoLgpd: true,
         versaoTermoAceito: termo?.versao ?? "1.0",
         ehCoordenadorCompdec: ehCoordenador === "sim",
+        ...(form.municipioId ? { municipioId: Number(form.municipioId) } : {}),
       };
-      if (form.municipioId) payload.municipioId = Number(form.municipioId);
 
-      const resp = await api.post<TokensResposta>("/auth/registrar", payload);
+      const resp = await AuthService.registrar(payload);
       salvarTokens(resp.accessToken, resp.refreshToken);
       navigate("/");
     } catch (err) {

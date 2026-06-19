@@ -12,29 +12,12 @@ import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
+import { QUERY_KEYS } from "../../shared/constants";
+import { FormulariosService } from "./services/formularios.service";
 import { PreviewDialog } from "./builder/PreviewDialog";
 import { useState } from "react";
 import type { SchemaFormulario } from "@dcmg/contracts";
-
-interface VersaoResumo {
-  id: string;
-  versao: number;
-  status: string;
-  publicadoEm: string | null;
-  competencia: { id: string; nome: string; status: string } | null;
-  _count: { submissoes: number };
-}
-
-interface FormularioDetalheData {
-  id: string;
-  nome: string;
-  descricao: string | null;
-  categoria: string | null;
-  status: string;
-  versoes: VersaoResumo[];
-}
 
 const COR_STATUS: Record<string, "default" | "warning" | "success" | "error"> = {
   RASCUNHO: "default",
@@ -50,13 +33,13 @@ export default function FormularioDetalhe() {
   const [previewSchema, setPreviewSchema] = useState<SchemaFormulario | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["formularios", id],
-    queryFn: () => api.get<FormularioDetalheData>(`/formularios/${id}`),
+    queryKey: [QUERY_KEYS.FORMULARIOS, id],
+    queryFn: () => FormulariosService.buscar(id!),
     enabled: !!id,
   });
 
   async function abrirPreview(versaoId: string) {
-    const v = await api.get<{ schema: SchemaFormulario }>(`/formularios/${id}/versoes/${versaoId}`);
+    const v = await FormulariosService.buscarVersao(id!, versaoId);
     setPreviewSchema(v.schema);
   }
 

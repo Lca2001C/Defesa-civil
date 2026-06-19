@@ -22,25 +22,10 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
-
-interface Formulario {
-  id: string;
-  nome: string;
-  descricao: string | null;
-  categoria: string | null;
-  status: string;
-  _count: { versoes: number };
-  criadoEm: string;
-}
-
-interface ListagemFormularios {
-  items: Formulario[];
-  total: number;
-  pagina: number;
-  totalPaginas: number;
-}
+import { QUERY_KEYS } from "../../shared/constants";
+import { FormulariosService } from "./services/formularios.service";
+import type { Formulario } from "./types";
 
 const COR_STATUS: Record<string, "default" | "warning" | "success" | "error"> = {
   RASCUNHO: "default",
@@ -57,14 +42,14 @@ export default function FormulariosPage() {
   const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["formularios"],
-    queryFn: () => api.get<ListagemFormularios>("/formularios?porPagina=50"),
+    queryKey: [QUERY_KEYS.FORMULARIOS],
+    queryFn: () => FormulariosService.listar(),
   });
 
   const mutarExcluir = useMutation({
-    mutationFn: (id: string) => api.delete(`/formularios/${id}`),
+    mutationFn: (id: string) => FormulariosService.excluir(id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["formularios"] });
+      void qc.invalidateQueries({ queryKey: [QUERY_KEYS.FORMULARIOS] });
       setExcluindo(null);
       setErroExclusao(null);
     },

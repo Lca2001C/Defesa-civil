@@ -15,7 +15,9 @@ import {
   Stack,
   TextField,
 } from "@mui/material";
-import { api, ApiError } from "../../lib/api";
+import { ApiError } from "../../lib/api";
+import { QUERY_KEYS } from "../../shared/constants";
+import { UsuariosService } from "./services/usuarios.service";
 
 const PERFIS = [
   { codigo: "SUPER_ADMIN", label: "Super Administrador" },
@@ -65,17 +67,15 @@ export default function UsuarioFormDialog({ open, onClose, usuarioId }: Props) {
   const mutation = useMutation({
     mutationFn: () => {
       if (isEdicao) {
-        return api.patch(`/usuarios/${usuarioId}`, {
-          nome, cargo, telefone, perfilCodigo,
-        });
+        return UsuariosService.atualizar(usuarioId!, { nome, cargo, telefone, perfilCodigo });
       }
-      return api.post("/usuarios", {
+      return UsuariosService.criar({
         nome, cpf, email, senha, cargo, telefone, perfilCodigo, escopo,
         municipioId: escopo === "MUNICIPAL" && municipioId ? Number(municipioId) : undefined,
       });
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["usuarios"] });
+      void qc.invalidateQueries({ queryKey: [QUERY_KEYS.USUARIOS] });
       onClose();
     },
     onError: (e) => {

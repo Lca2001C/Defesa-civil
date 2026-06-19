@@ -37,42 +37,15 @@ import AttachFileIcon from "@mui/icons-material/AttachFile";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { exportarSubmissoes, type FiltrosExport } from "../../lib/exportSubmissoes";
+import { QUERY_KEYS } from "../../shared/constants";
+import { SubmissoesService } from "./services/submissoes.service";
+import type { SubmissaoLista } from "./types";
+import { MunicipiosService } from "../municipios/services/municipios.service";
+import { CompetenciasService } from "../competencias/services/competencias.service";
 
-interface Submissao {
-  id: string;
-  protocolo: string;
-  status: string;
-  nomeRespondente: string;
-  criadoEm: string;
-  enviadoEm: string | null;
-  municipio: { id: number; nome: string; regional: { nome: string } | null };
-  competencia: { nome: string } | null;
-  formularioVersao: { versao: number; formulario: { nome: string } };
-  autor: { nome: string } | null;
-  _count: { historico: number; anexos: number };
-}
-
-interface Listagem {
-  items: Submissao[];
-  total: number;
-  pagina: number;
-  porPagina: number;
-  totalPaginas: number;
-}
-
-interface MunicipioOpcao {
-  id: number;
-  nome: string;
-}
-
-interface CompetenciaOpcao {
-  id: string;
-  nome: string;
-  ano: number;
-}
+type Submissao = SubmissaoLista;
 
 const COR_STATUS: Record<string, "default" | "info" | "warning" | "success" | "error"> = {
   RASCUNHO: "default",
@@ -152,16 +125,15 @@ export default function SubmissoesPage() {
   // ── dados auxiliares (selects) ─────────────────────────────────────────────
   const { data: municipios = [] } = useQuery({
     queryKey: ["municipios-lista"],
-    queryFn: () => api.get<MunicipioOpcao[]>("/municipios/lista"),
+    queryFn: () => MunicipiosService.listarParaSelecao(),
     staleTime: 60 * 60 * 1000,
   });
 
-  const { data: competenciasData } = useQuery({
+  const { data: competencias = [] } = useQuery({
     queryKey: ["competencias-lista"],
-    queryFn: () => api.get<{ items: CompetenciaOpcao[] }>("/competencias?porPagina=100"),
+    queryFn: () => CompetenciasService.listar(),
     staleTime: 5 * 60 * 1000,
   });
-  const competencias = competenciasData?.items ?? [];
 
   // ── listagem ───────────────────────────────────────────────────────────────
   const queryString = useMemo(() => {
@@ -178,14 +150,14 @@ export default function SubmissoesPage() {
   }, [pagina, porPagina, busca, municipioId, competenciaId, statusFiltro, dataInicio, dataFim]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["submissoes", queryString],
-    queryFn: () => api.get<Listagem>(`/submissoes?${queryString}`),
+    queryKey: [QUERY_KEYS.SUBMISSOES, queryString],
+    queryFn: () => SubmissoesService.listar(queryString),
   });
 
   const mutarExcluir = useMutation({
-    mutationFn: (id: string) => api.delete(`/submissoes/${id}`),
+    mutationFn: (id: string) => SubmissoesService.excluir(id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["submissoes"] });
+      void qc.invalidateQueries({ queryKey: [QUERY_KEYS.SUBMISSOES] });
       setExcluindo(null);
       setErroExclusao(null);
     },

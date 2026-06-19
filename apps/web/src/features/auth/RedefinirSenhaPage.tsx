@@ -10,8 +10,9 @@ import {
   Typography,
 } from "@mui/material";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { api, ApiError } from "../../lib/api";
+import { ApiError } from "../../lib/api";
 import { cores } from "../../theme/tokens";
+import { AuthService } from "./services/auth.service";
 
 export default function RedefinirSenhaPage() {
   const [searchParams] = useSearchParams();
@@ -59,7 +60,7 @@ export default function RedefinirSenhaPage() {
 
     setCarregando(true);
     try {
-      await api.post("/auth/recuperar-senha/redefinir", { token, novaSenha });
+      await AuthService.redefinirSenha(token, novaSenha);
       setSucesso(true);
       setTimeout(() => navigate("/login"), 3000);
     } catch (err) {

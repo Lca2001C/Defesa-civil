@@ -28,45 +28,10 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../../lib/api";
 import { uploadAnexo } from "../../lib/uploadR2";
 import { useAuth } from "../../lib/auth-context";
 import { ACCEPT_TIPOS } from "../../shared/constants";
-import type { SchemaFormulario } from "@dcmg/contracts";
-
-interface HistoricoItem {
-  id: string;
-  acao: string;
-  comentario: string | null;
-  criadoEm: string;
-  autor: { nome: string };
-}
-
-interface Anexo {
-  id: string;
-  arquivo: { nomeOriginal: string; mimeType: string | null; tamanhoBytes: number | null };
-}
-
-interface SubmissaoCompleta {
-  id: string;
-  protocolo: string;
-  status: string;
-  nomeRespondente: string;
-  cpfRespondente: string;
-  cargoRespondente: string | null;
-  emailRespondente: string | null;
-  criadoEm: string;
-  enviadoEm: string | null;
-  aprovadoEm: string | null;
-  dados: Record<string, unknown>;
-  schema: SchemaFormulario;
-  municipio: { nome: string; uf: { sigla: string } };
-  formularioVersao: { versao: number; formulario: { nome: string } };
-  competencia: { nome: string; status: string };
-  autor: { nome: string; email: string };
-  historico: HistoricoItem[];
-  anexos: Anexo[];
-}
+import { SubmissoesService } from "./services/submissoes.service";
 
 const COR_STATUS: Record<string, "default" | "info" | "warning" | "success" | "error"> = {
   RASCUNHO: "default",
@@ -107,7 +72,7 @@ export default function SubmissaoDetalhe() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["submissao", id],
-    queryFn: () => api.get<SubmissaoCompleta>(`/submissoes/${id}`),
+    queryFn: () => SubmissoesService.buscar(id!),
     enabled: !!id,
   });
 
@@ -122,8 +87,7 @@ export default function SubmissaoDetalhe() {
   };
 
   const acaoMutation = useMutation({
-    mutationFn: (acao: string) =>
-      api.patch(`/submissoes/${id}/${acao}`, { comentario: comentario || undefined }),
+    mutationFn: (acao: string) => SubmissoesService.acao(id!, acao, comentario),
     onSuccess: () => {
       invalida();
       setDialogAcao(null);
@@ -134,7 +98,7 @@ export default function SubmissaoDetalhe() {
   });
 
   const enviarMutation = useMutation({
-    mutationFn: () => api.patch(`/submissoes/${id}/enviar`, {}),
+    mutationFn: () => SubmissoesService.enviar(id!),
     onSuccess: invalida,
     onError: (e: unknown) => setErro((e as Error).message),
   });
@@ -149,7 +113,7 @@ export default function SubmissaoDetalhe() {
   });
 
   const removerAnexo = useMutation({
-    mutationFn: (anexoId: string) => api.del(`/submissoes/${id}/anexos/${anexoId}`),
+    mutationFn: (anexoId: string) => SubmissoesService.removerAnexo(id!, anexoId),
     onSuccess: invalida,
     onError: (e: unknown) => setErro((e as Error).message),
   });

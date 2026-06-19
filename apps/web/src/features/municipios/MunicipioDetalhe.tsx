@@ -14,23 +14,9 @@ import {
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SaveIcon from "@mui/icons-material/Save";
-import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
-
-interface Compdec {
-  id: string;
-  coordenadorNome: string | null;
-  telefone: string | null;
-  email: string | null;
-}
-
-interface Municipio {
-  id: number;
-  nome: string;
-  compdec: Compdec | null;
-  regional: { nome: string } | null;
-  uf: { sigla: string; nome: string };
-}
+import { QUERY_KEYS } from "../../shared/constants";
+import { MunicipiosService } from "./services/municipios.service";
 
 export default function MunicipioDetalhe() {
   const { id } = useParams<{ id: string }>();
@@ -40,9 +26,9 @@ export default function MunicipioDetalhe() {
 
   const podeGerenciar = usuario?.permissoes.includes("municipios.gerenciar") ?? false;
 
-  const { data, isLoading } = useQuery<Municipio>({
-    queryKey: ["municipios", id],
-    queryFn: () => api.get<Municipio>(`/municipios/${id}`),
+  const { data, isLoading } = useQuery({
+    queryKey: [QUERY_KEYS.MUNICIPIOS, id],
+    queryFn: () => MunicipiosService.buscar(id!),
     enabled: !!id,
   });
 
@@ -62,9 +48,9 @@ export default function MunicipioDetalhe() {
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.patch(`/municipios/${id}/compdec`, { coordenadorNome, telefone, email }),
+      MunicipiosService.atualizarCompdec(id!, { coordenadorNome, telefone, email }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["municipios"] });
+      void qc.invalidateQueries({ queryKey: [QUERY_KEYS.MUNICIPIOS] });
       setSucesso(true);
       setErro(null);
       setTimeout(() => setSucesso(false), 3000);

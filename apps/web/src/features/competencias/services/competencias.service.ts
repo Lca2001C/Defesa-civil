@@ -9,6 +9,11 @@ export const CompetenciasService = {
   listar: () =>
     api.get<{ items: Competencia[] }>("/competencias?porPagina=100").then((r) => r.items),
 
+  listarAbertas: () =>
+    api
+      .get<{ items: Competencia[] }>("/competencias?status=ABERTA&porPagina=100")
+      .then((r) => r.items),
+
   criar: (dados: CriarCompetenciaInput) => api.post("/competencias", dados),
 
   abrir: (id: string) => api.patch(`/competencias/${id}/abrir`, {}),
