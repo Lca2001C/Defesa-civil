@@ -7,11 +7,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import * as argon2 from 'argon2';
 import { randomBytes, createHash } from 'crypto';
 import type { Env } from '../../../config/env.validation';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import { RedisService } from '../../../infra/redis/redis.service';
+import { hashSenha, verificarSenha } from '../../../shared/hash.util';
+import { AuditoriaService } from '../../auditoria/services/auditoria.service';
 import { AuthRepository, type UsuarioComPerfil } from '../repositories/auth.repository';
 import type { TokensDto } from '../dto/tokens.dto';
 import type { RegistrarDto } from '../dto/registrar.dto';
@@ -20,6 +21,15 @@ import type { SolicitarRecuperacaoDto, RedefinirSenhaComTokenDto } from '../dto/
 const MAX_TENTATIVAS = 5;
 const BLOQUEIO_SEGUNDOS = 15 * 60;
 const RECOVERY_TTL_HORAS = 1;
+// Rate limit dedicado da recuperação de senha (anti-enumeração / e-mail bombing).
+const RESET_MAX = 3;
+const RESET_JANELA_SEGUNDOS = 15 * 60;
+
+/** Contexto de origem da requisição (para auditoria). */
+export interface OrigemRequisicao {
+  ip?: string | null;
+  userAgent?: string | null;
+}
 
 @Injectable()
 export class AuthService {
@@ -28,11 +38,12 @@ export class AuthService {
     private readonly redis: RedisService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService<Env, true>,
+    private readonly auditoria: AuditoriaService,
   ) {}
 
   // ── Login ──────────────────────────────────────────────────────────────────
 
-  async login(email: string, senha: string): Promise<TokensDto> {
+  async login(email: string, senha: string, origem: OrigemRequisicao = {}): Promise<TokensDto> {
     const rc = this.redis.getClient();
     const chaveAttempts = `login_fail:${email}`;
 
@@ -45,18 +56,35 @@ export class AuthService {
 
     const usuario = await this.repo.buscarPorEmailComPerfil(email);
     const senhaValida =
-      !!usuario?.ativo && (await argon2.verify(usuario.senhaHash, senha).catch(() => false));
+      !!usuario?.ativo && (await verificarSenha(usuario.senhaHash, senha));
 
     if (!senhaValida || !usuario) {
       const pipeline = rc.pipeline();
       pipeline.incr(chaveAttempts);
       pipeline.expire(chaveAttempts, BLOQUEIO_SEGUNDOS);
       await pipeline.exec();
+      void this.auditoria.registrar({
+        atorId: usuario?.id ?? null,
+        acao: 'LOGIN_FALHA',
+        entidade: 'auth',
+        entidadeId: email,
+        ip: origem.ip,
+        userAgent: origem.userAgent,
+      });
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
     await rc.del(chaveAttempts);
     this.repo.marcarUltimoAcesso(usuario.id);
+
+    void this.auditoria.registrar({
+      atorId: usuario.id,
+      acao: 'LOGIN_SUCESSO',
+      entidade: 'auth',
+      entidadeId: usuario.id,
+      ip: origem.ip,
+      userAgent: origem.userAgent,
+    });
 
     return this.gerarTokens(usuario);
   }
@@ -79,7 +107,7 @@ export class AuthService {
       throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
     }
 
-    const tokenValido = await argon2.verify(hashArmazenado, refreshToken).catch(() => false);
+    const tokenValido = await verificarSenha(hashArmazenado, refreshToken);
     if (!tokenValido) {
       throw new UnauthorizedException('Refresh token inválido.');
     }
@@ -94,8 +122,16 @@ export class AuthService {
 
   // ── Logout ─────────────────────────────────────────────────────────────────
 
-  async logout(usuarioId: string): Promise<void> {
+  async logout(usuarioId: string, origem: OrigemRequisicao = {}): Promise<void> {
     await this.redis.getClient().del(`refresh:${usuarioId}`);
+    void this.auditoria.registrar({
+      atorId: usuarioId,
+      acao: 'LOGOUT',
+      entidade: 'auth',
+      entidadeId: usuarioId,
+      ip: origem.ip,
+      userAgent: origem.userAgent,
+    });
   }
 
   // ── Registro público ───────────────────────────────────────────────────────
@@ -130,7 +166,7 @@ export class AuthService {
       }
     }
 
-    const senhaHash = await argon2.hash(dto.senha, { type: argon2.argon2id });
+    const senhaHash = await hashSenha(dto.senha);
 
     const usuarioCompleto = await this.repo.criarUsuarioComAceite({
       nome: dto.nome,
@@ -159,7 +195,15 @@ export class AuthService {
 
   // ── Recuperação de senha ───────────────────────────────────────────────────
 
-  async solicitarRecuperacaoSenha(dto: SolicitarRecuperacaoDto): Promise<void> {
+  async solicitarRecuperacaoSenha(
+    dto: SolicitarRecuperacaoDto,
+    origem: OrigemRequisicao = {},
+  ): Promise<void> {
+    // Rate limit dedicado por e-mail e por IP (anti-enumeração / e-mail bombing).
+    // Aplicado ANTES de qualquer consulta e sem revelar se o e-mail existe.
+    if (await this.resetExcedido(`pwreset:${dto.email}`)) return;
+    if (origem.ip && (await this.resetExcedido(`pwreset_ip:${origem.ip}`))) return;
+
     const usuario = await this.repo.buscarParaRecuperacao(dto.email);
 
     // Não revelamos se o e-mail existe (segurança).
@@ -173,6 +217,14 @@ export class AuthService {
 
     await this.repo.criarRecuperacao(dto.email, tokenHash, expiresAt);
     await this.enviarEmailRecuperacao(dto.email, usuario.nome, token);
+  }
+
+  /** Incrementa o contador de reset e indica se o limite da janela foi excedido. */
+  private async resetExcedido(chave: string): Promise<boolean> {
+    const rc = this.redis.getClient();
+    const n = await rc.incr(chave);
+    if (n === 1) await rc.expire(chave, RESET_JANELA_SEGUNDOS);
+    return n > RESET_MAX;
   }
 
   private async enviarEmailRecuperacao(email: string, nome: string, token: string): Promise<void> {
@@ -210,7 +262,10 @@ export class AuthService {
     });
   }
 
-  async redefinirSenhaComToken(dto: RedefinirSenhaComTokenDto): Promise<void> {
+  async redefinirSenhaComToken(
+    dto: RedefinirSenhaComTokenDto,
+    origem: OrigemRequisicao = {},
+  ): Promise<void> {
     const tokenHash = createHash('sha256').update(dto.token).digest('hex');
 
     const recuperacao = await this.repo.buscarRecuperacao(tokenHash);
@@ -220,18 +275,27 @@ export class AuthService {
       throw new BadRequestException('Link de redefinição expirado. Solicite um novo.');
     }
 
-    const senhaHash = await argon2.hash(dto.novaSenha, { type: argon2.argon2id });
+    const senhaHash = await hashSenha(dto.novaSenha);
     await this.repo.redefinirSenhaPorToken(recuperacao.email, senhaHash, tokenHash);
 
     // Invalida todas as sessões ativas (logout global).
     const usuarioId = await this.repo.buscarIdPorEmail(recuperacao.email);
     if (usuarioId) await this.redis.getClient().del(`refresh:${usuarioId}`);
+
+    void this.auditoria.registrar({
+      atorId: usuarioId,
+      acao: 'SENHA_REDEFINIDA',
+      entidade: 'auth',
+      entidadeId: usuarioId ?? recuperacao.email,
+      ip: origem.ip,
+      userAgent: origem.userAgent,
+    });
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   hashSenha(senha: string): Promise<string> {
-    return argon2.hash(senha, { type: argon2.argon2id });
+    return hashSenha(senha);
   }
 
   private async gerarTokens(usuario: UsuarioComPerfil): Promise<TokensDto> {
@@ -259,7 +323,7 @@ export class AuthService {
       this.jwt.signAsync({ sub: usuario.id }, { secret: refreshSecret, expiresIn: refreshTtl }),
     ]);
 
-    const hashRefresh = await argon2.hash(refreshToken, { type: argon2.argon2id });
+    const hashRefresh = await hashSenha(refreshToken);
     await this.redis.getClient().setex(`refresh:${usuario.id}`, this.parseTtl(refreshTtl), hashRefresh);
 
     return { accessToken, refreshToken, expiresIn: this.parseTtl(accessTtl), tipo: 'Bearer' };

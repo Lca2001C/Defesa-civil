@@ -9,37 +9,10 @@ import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { extrairIp } from '../../shared/utils/format.util';
+import { redigir } from '../../shared/redact.util';
 import type { JwtPayload } from '../types/jwt-payload';
 
 const METODOS_AUDITADOS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-// Campos que NUNCA devem aparecer nos logs de auditoria (LGPD/segurança).
-const CAMPOS_SENSIVEIS = new Set([
-  'senha',
-  'senhaHash',
-  'senha_hash',
-  'password',
-  'cpf',
-  'cpfRespondente',
-  'cpf_respondente',
-  'dados',       // JSONB de respostas pode conter dados pessoais
-  'dadosSnapshot',
-  'dados_snapshot',
-  'token',
-  'accessToken',
-  'refreshToken',
-]);
-
-function sanitizar(obj: unknown, profundidade = 0): unknown {
-  if (profundidade > 3 || obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map((item) => sanitizar(item, profundidade + 1));
-
-  const resultado: Record<string, unknown> = {};
-  for (const [chave, valor] of Object.entries(obj as Record<string, unknown>)) {
-    resultado[chave] = CAMPOS_SENSIVEIS.has(chave) ? '[REDACTED]' : sanitizar(valor, profundidade + 1);
-  }
-  return resultado;
-}
 
 /**
  * Interceptor global de auditoria (LGPD — responsabilização).
@@ -95,7 +68,7 @@ export class AuditInterceptor implements NestInterceptor {
           acao: `${req.method} ${req.path}`,
           entidade,
           entidadeId: entidadeIdFinal,
-          depois: resposta ? (sanitizar(resposta) as object) : undefined,
+          depois: resposta ? (redigir(resposta) as object) : undefined,
           ip: ipBruto ?? null,
           userAgent:
             (req.headers['user-agent'] as string | undefined) ?? null,

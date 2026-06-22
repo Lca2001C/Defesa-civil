@@ -22,7 +22,9 @@ import { PERMISSION_LEVEL } from '../../../shared/constants';
 import type { Env } from '../../../config/env.validation';
 import type { PaginacaoDto } from '../../../common/dto/paginacao.dto';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
+import { AuditoriaService } from '../../auditoria/services/auditoria.service';
 import { SubmissoesRepository } from '../repositories/submissoes.repository';
+import { SubmissaoExportService, type DetalheExport } from './submissao-export.service';
 import { tipoArquivoPermitido } from '../validators/anexo.validator';
 import type { CriarSubmissaoDto } from '../dto/criar-submissao.dto';
 import type { AtualizarSubmissaoDto } from '../dto/atualizar-submissao.dto';
@@ -56,6 +58,8 @@ export class SubmissoesService {
     private readonly formularios: FormulariosService,
     private readonly storage: StorageService,
     private readonly redis: RedisService,
+    private readonly exportService: SubmissaoExportService,
+    private readonly auditoria: AuditoriaService,
     private readonly config: ConfigService<Env, true>,
   ) {}
 
@@ -176,6 +180,47 @@ export class SubmissoesService {
     for (const r of sub.respostas) dados[r.perguntaCodigo] = r.valor;
 
     return { ...sub, historico, schema, dados };
+  }
+
+  // -------------------------------------------------------------- exportar --
+
+  /** Gera o documento (PDF ou Excel) de uma submissão para download. */
+  async exportar(
+    id: string,
+    formato: 'pdf' | 'xlsx',
+    usuario: JwtPayload,
+    origem: { ip?: string | null; userAgent?: string | null } = {},
+  ): Promise<{ buffer: Buffer; filename: string; mimeType: string }> {
+    if (formato !== 'pdf' && formato !== 'xlsx') {
+      throw new BadRequestException('Formato inválido. Use "pdf" ou "xlsx".');
+    }
+
+    const detalhe = (await this.buscarPorId(id, usuario)) as unknown as DetalheExport & {
+      protocolo: string | null;
+    };
+    const base = `submissao_${(detalhe.protocolo ?? id).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
+    void this.auditoria.registrar({
+      atorId: usuario.sub,
+      acao: `EXPORT_${formato.toUpperCase()}`,
+      entidade: 'submissoes',
+      entidadeId: id,
+      ip: origem.ip,
+      userAgent: origem.userAgent,
+    });
+
+    if (formato === 'pdf') {
+      return {
+        buffer: await this.exportService.gerarPdf(detalhe),
+        filename: `${base}.pdf`,
+        mimeType: 'application/pdf',
+      };
+    }
+    return {
+      buffer: await this.exportService.gerarExcel(detalhe),
+      filename: `${base}.xlsx`,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
   }
 
   // ---------------------------------------------------------------- atualizar --
@@ -342,7 +387,12 @@ export class SubmissoesService {
   }
 
   /** URL de download do anexo: presigned GET (S3/R2) — direto do bucket. */
-  async urlDownloadAnexo(id: string, anexoId: string, usuario: JwtPayload) {
+  async urlDownloadAnexo(
+    id: string,
+    anexoId: string,
+    usuario: JwtPayload,
+    origem: { ip?: string | null; userAgent?: string | null } = {},
+  ) {
     await this.carregarParaEscopo(id, usuario);
     const anexo = await this.repo.buscarAnexo(anexoId);
     if (!anexo || anexo.submissaoId !== id) {
@@ -352,6 +402,16 @@ export class SubmissoesService {
       throw new BadRequestException('Download direto disponível apenas com storage S3/R2.');
     }
     const url = await this.storage.assinarDownload(anexo.arquivo.chave, anexo.arquivo.nomeOriginal);
+
+    void this.auditoria.registrar({
+      atorId: usuario.sub,
+      acao: 'DOWNLOAD',
+      entidade: 'submissoes',
+      entidadeId: anexoId,
+      ip: origem.ip,
+      userAgent: origem.userAgent,
+    });
+
     return { url };
   }
 

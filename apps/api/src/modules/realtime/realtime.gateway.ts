@@ -12,7 +12,9 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/env.validation';
+import type { JwtPayload } from '../../common/types/jwt-payload';
 import { PainelService } from '../painel/services/painel.service';
+import { resolverOrigensCors } from '../../shared/cors.util';
 
 /** Janela mínima entre broadcasts de stats por competência (anti-tempestade). */
 const STATS_THROTTLE_MS = 3000;
@@ -26,7 +28,8 @@ export interface StatusMunicipioEvento {
 
 @WebSocketGateway({
   namespace: '/painel',
-  cors: { origin: '*', credentials: true },
+  // Mesma lista branca do HTTP (CORS_ORIGINS), avaliada no carregamento.
+  cors: { origin: resolverOrigensCors(), credentials: true },
 })
 export class RealtimeGateway
   implements OnGatewayConnection, OnGatewayDisconnect
@@ -52,9 +55,11 @@ export class RealtimeGateway
       (client.handshake.headers?.authorization?.replace('Bearer ', '') ?? '');
 
     try {
-      this.jwt.verify(token, {
+      const payload = this.jwt.verify<JwtPayload>(token, {
         secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
       });
+      // Guarda o payload na conexão para autorizar eventos subsequentes (join).
+      client.data.usuario = payload;
       this.logger.debug(`Cliente conectado: ${client.id}`);
     } catch {
       this.logger.warn(`Conexão recusada (token inválido): ${client.id}`);
@@ -71,7 +76,16 @@ export class RealtimeGateway
     @MessageBody() data: { competenciaId: string },
     @ConnectedSocket() client: Socket,
   ) {
-    if (!data?.competenciaId) return;
+    if (!data?.competenciaId) return { ok: false, erro: 'competenciaId ausente.' };
+
+    // Autorização: paridade com o REST (@Permissao('painel.ver')). Sem a
+    // permissão, o cliente não entra na sala e não recebe broadcasts.
+    const usuario = client.data.usuario as JwtPayload | undefined;
+    if (!usuario?.permissoes?.includes('painel.ver')) {
+      this.logger.warn(`${client.id} sem permissão painel.ver — join recusado`);
+      return { ok: false, erro: 'Acesso negado ao painel.' };
+    }
+
     const room = `painel:${data.competenciaId}`;
     await client.join(room);
     this.logger.debug(`${client.id} entrou na sala ${room}`);

@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { ehProducao } from '../shared/cors.util';
 
 /** Formato padronizado de resposta de erro da API. */
 interface RespostaErro {
@@ -34,23 +35,32 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const { statusCode, message, error } = this.extrair(exception);
+    const extraido = this.extrair(exception);
+    const ehErroServidor = extraido.statusCode >= HttpStatus.INTERNAL_SERVER_ERROR;
+
+    // Em produção, respostas 5xx nunca expõem detalhes técnicos (stack, nome de
+    // classe interna, trecho de query/SQL, segredos). O diagnóstico fica apenas
+    // no log do servidor. Em dev mantém a mensagem original para facilitar.
+    const ocultarDetalhe = ehErroServidor && ehProducao();
 
     const corpo: RespostaErro = {
-      statusCode,
-      message,
-      error,
+      statusCode: extraido.statusCode,
+      message: ocultarDetalhe ? 'Erro interno do servidor.' : extraido.message,
+      error: ocultarDetalhe ? 'Internal Server Error' : extraido.error,
       timestamp: new Date().toISOString(),
+      // Apenas a rota da requisição (não caminho físico de arquivo).
       path: request.url,
     };
 
-    // Erros 5xx sao inesperados: loga com detalhes para diagnostico.
-    if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+    // Erros 5xx sao inesperados: loga com detalhes para diagnostico (server-side).
+    if (ehErroServidor) {
       this.logger.error(
-        `${request.method} ${request.url} -> ${statusCode}`,
+        `${request.method} ${request.url} -> ${extraido.statusCode}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
+
+    const statusCode = extraido.statusCode;
 
     response.status(statusCode).json(corpo);
   }

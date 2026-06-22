@@ -4,10 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import * as argon2 from 'argon2';
 import { mascaraCpf } from '../../../shared/utils/format.util';
+import { hashSenha } from '../../../shared/hash.util';
 import { PERMISSION_LEVEL } from '../../../shared/constants';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
+import { RedisService } from '../../../infra/redis/redis.service';
 import { UsuariosRepository } from '../repositories/usuarios.repository';
 import type { CriarUsuarioDto } from '../dto/criar-usuario.dto';
 import type { AtualizarUsuarioDto } from '../dto/atualizar-usuario.dto';
@@ -20,7 +21,10 @@ import type { AtualizarUsuarioDto } from '../dto/atualizar-usuario.dto';
  */
 @Injectable()
 export class UsuariosService {
-  constructor(private readonly repo: UsuariosRepository) {}
+  constructor(
+    private readonly repo: UsuariosRepository,
+    private readonly redis: RedisService,
+  ) {}
 
   async buscarMeusDados(usuarioId: string) {
     const usuario = await this.repo.buscarCadastroLgpd(usuarioId);
@@ -77,7 +81,7 @@ export class UsuariosService {
     if (cpfExiste) throw new BadRequestException('CPF já cadastrado.');
     if (!perfilId) throw new NotFoundException(`Perfil "${dto.perfilCodigo}" não encontrado.`);
 
-    const senhaHash = await argon2.hash(dto.senha, { type: argon2.argon2id });
+    const senhaHash = await hashSenha(dto.senha);
 
     return this.repo.criar({
       nome: dto.nome,
@@ -134,8 +138,13 @@ export class UsuariosService {
       throw new ForbiddenException('Apenas o próprio usuário ou SUPER_ADMIN pode redefinir a senha.');
     }
     await this.buscarOuFalhar(id);
-    const senhaHash = await argon2.hash(novaSenha, { type: argon2.argon2id });
+    const senhaHash = await hashSenha(novaSenha);
     await this.repo.atualizarSenha(id, senhaHash);
+
+    // Segurança: invalida as sessões ativas do usuário (logout global) após a
+    // troca de senha — paridade com o fluxo de redefinição por token.
+    await this.redis.getClient().del(`refresh:${id}`);
+
     return { mensagem: 'Senha redefinida com sucesso.' };
   }
 

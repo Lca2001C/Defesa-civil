@@ -31,8 +31,11 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Autentica com e-mail + senha. Retorna access + refresh tokens.' })
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.senha);
+  login(@Body() dto: LoginDto, @Req() req: Request) {
+    return this.auth.login(dto.email, dto.senha, {
+      ip: extrairIp(req),
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Publico()
@@ -47,16 +50,22 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Invalida a sessão atual (revoga refresh token).' })
-  logout(@UsuarioAtual() usuario: JwtPayload) {
-    return this.auth.logout(usuario.sub);
+  logout(@UsuarioAtual() usuario: JwtPayload, @Req() req: Request) {
+    return this.auth.logout(usuario.sub, {
+      ip: extrairIp(req),
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Post('logout-global')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Invalida todas as sessões do usuário.' })
-  logoutGlobal(@UsuarioAtual() usuario: JwtPayload) {
-    return this.auth.logout(usuario.sub);
+  logoutGlobal(@UsuarioAtual() usuario: JwtPayload, @Req() req: Request) {
+    return this.auth.logout(usuario.sub, {
+      ip: extrairIp(req),
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Publico()
@@ -78,16 +87,22 @@ export class AuthController {
   @Post('recuperar-senha/solicitar')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Envia link de redefinição de senha por e-mail.' })
-  solicitarRecuperacao(@Body() dto: SolicitarRecuperacaoDto) {
-    return this.auth.solicitarRecuperacaoSenha(dto);
+  solicitarRecuperacao(@Body() dto: SolicitarRecuperacaoDto, @Req() req: Request) {
+    return this.auth.solicitarRecuperacaoSenha(dto, {
+      ip: extrairIp(req),
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Publico()
   @Post('recuperar-senha/redefinir')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Aplica nova senha usando o token enviado por e-mail.' })
-  redefinirSenha(@Body() dto: RedefinirSenhaComTokenDto) {
-    return this.auth.redefinirSenhaComToken(dto);
+  redefinirSenha(@Body() dto: RedefinirSenhaComTokenDto, @Req() req: Request) {
+    return this.auth.redefinirSenhaComToken(dto, {
+      ip: extrairIp(req),
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Get('me')

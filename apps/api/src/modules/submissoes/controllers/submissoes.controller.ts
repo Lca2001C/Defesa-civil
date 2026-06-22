@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseInterceptors,
   HttpCode,
@@ -15,8 +16,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request, Express } from 'express';
+import { ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import type { Request, Response, Express } from 'express';
 import { SubmissoesService } from '../services/submissoes.service';
 import { CriarSubmissaoDto } from '../dto/criar-submissao.dto';
 import { AtualizarSubmissaoDto } from '../dto/atualizar-submissao.dto';
@@ -88,6 +89,29 @@ export class SubmissoesController {
   @ApiOperation({ summary: 'Buscar submissão por ID (com schema composto, dados e anexos)' })
   buscar(@Param('id') id: string, @UsuarioAtual() usuario: JwtPayload) {
     return this.service.buscarPorId(id, usuario);
+  }
+
+  @Get(':id/export')
+  @Permissao('submissoes.criar')
+  @ApiQuery({ name: 'formato', required: false, enum: ['pdf', 'xlsx'] })
+  @ApiOperation({ summary: 'Baixa a submissão como documento (PDF ou Excel).' })
+  async exportar(
+    @Param('id') id: string,
+    @UsuarioAtual() usuario: JwtPayload,
+    @Res() res: Response,
+    @Req() req: Request,
+    @Query('formato') formato: 'pdf' | 'xlsx' = 'pdf',
+  ) {
+    const { buffer, filename, mimeType } = await this.service.exportar(id, formato, usuario, {
+      ip: extrairIp(req),
+      userAgent: req.headers['user-agent'],
+    });
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
   }
 
   @Delete(':id')
@@ -241,8 +265,12 @@ export class SubmissoesController {
     @Param('id') id: string,
     @Param('anexoId') anexoId: string,
     @UsuarioAtual() usuario: JwtPayload,
+    @Req() req: Request,
   ) {
-    return this.service.urlDownloadAnexo(id, anexoId, usuario);
+    return this.service.urlDownloadAnexo(id, anexoId, usuario, {
+      ip: extrairIp(req),
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Delete(':id/anexos/:anexoId')

@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import type { Env } from './config/env.validation';
 import { PrismaService } from './infra/prisma/prisma.service';
 import { WsRedisAdapter } from './infra/realtime/ws-redis.adapter';
+import { resolverOrigensCors } from './shared/cors.util';
 
 /**
  * Bootstrap da API NestJS da Plataforma Defesa Civil MG.
@@ -32,22 +33,43 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService<Env, true>);
   const porta = config.get('PORT', { infer: true });
   const prefixo = config.get('API_PREFIX', { infer: true });
-  const corsOrigins = config.get('CORS_ORIGINS', { infer: true });
 
-  // Seguranca de cabecalhos HTTP.
-  app.use(helmet());
+  // Seguranca de cabecalhos HTTP + CSP conservadora (compatível com a SPA
+  // MUI/Emotion, que usa estilos inline). `connect-src` libera self + WS/WSS
+  // para o painel em tempo real.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'blob:'],
+          fontSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'", 'ws:', 'wss:'],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'self'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+        },
+      },
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   // Compressao gzip das respostas (painel/status, dashboard, listas grandes).
   app.use(compression());
 
-  // CORS: converte a lista CSV em array; vazio => libera todas as origens.
-  const origens = corsOrigins
-    .split(',')
-    .map((origem) => origem.trim())
-    .filter((origem) => origem.length > 0);
+  // CORS: lista branca via CORS_ORIGINS (compartilhada com o WebSocket).
+  // Vazia => libera tudo só fora de produção; em produção a validate() do Zod
+  // já impede o boot sem origens definidas.
   app.enableCors({
-    origin: origens.length > 0 ? origens : true,
+    origin: resolverOrigensCors(),
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 86_400,
   });
 
   // Prefixo global: todas as rotas ficam sob /{API_PREFIX}.

@@ -27,7 +27,8 @@ describe('UsuariosService (regras de escopo/permissão)', () => {
       buscarDetalhado: jest.fn(),
       buscarPorId: jest.fn(),
     } as unknown as jest.Mocked<UsuariosRepository>;
-    service = new UsuariosService(repo);
+    const redis = { getClient: jest.fn().mockReturnValue({ del: jest.fn() }) };
+    service = new UsuariosService(repo, redis as never);
   });
 
   it('buscarPorId nega acesso a outro usuário quando nível insuficiente', async () => {

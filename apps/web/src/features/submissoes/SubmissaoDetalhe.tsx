@@ -16,10 +16,12 @@ import {
   List,
   ListItem,
   ListItemText,
+  Stack,
   TextField,
   Typography,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import DownloadIcon from "@mui/icons-material/Download";
 import SendIcon from "@mui/icons-material/Send";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import EditIcon from "@mui/icons-material/Edit";
@@ -118,6 +120,20 @@ export default function SubmissaoDetalhe() {
     onError: (e: unknown) => setErro((e as Error).message),
   });
 
+  const [baixando, setBaixando] = useState<"pdf" | "xlsx" | null>(null);
+  async function baixar(formato: "pdf" | "xlsx") {
+    if (!id) return;
+    setBaixando(formato);
+    setErro(null);
+    try {
+      await SubmissoesService.baixarExport(id, formato);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao baixar a submissão.");
+    } finally {
+      setBaixando(null);
+    }
+  }
+
   if (isLoading) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", mt: 8 }}>
@@ -195,7 +211,29 @@ export default function SubmissaoDetalhe() {
             {data.enviadoEm && ` · Enviado em ${new Date(data.enviadoEm).toLocaleDateString("pt-BR")}`}
           </Typography>
         </Box>
-        <Chip label={LABEL_STATUS[data.status] ?? data.status} color={COR_STATUS[data.status] ?? "default"} />
+        <Stack spacing={1} alignItems="flex-end">
+          <Chip label={LABEL_STATUS[data.status] ?? data.status} color={COR_STATUS[data.status] ?? "default"} />
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={baixando === "xlsx" ? <CircularProgress size={14} /> : <DownloadIcon />}
+              disabled={baixando !== null}
+              onClick={() => baixar("xlsx")}
+            >
+              Excel
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={baixando === "pdf" ? <CircularProgress size={14} /> : <DownloadIcon />}
+              disabled={baixando !== null}
+              onClick={() => baixar("pdf")}
+            >
+              PDF
+            </Button>
+          </Stack>
+        </Stack>
       </Box>
 
       {botoes.length > 0 && (

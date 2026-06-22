@@ -26,7 +26,8 @@ const booleanFromString = (padrao: boolean) =>
 const intFromString = (padrao: number) =>
   z.coerce.number().int().positive().default(padrao);
 
-export const envSchema = z.object({
+export const envSchema = z
+  .object({
   // --- Aplicacao ---
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
@@ -74,7 +75,39 @@ export const envSchema = z.object({
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
   NGINX_HTTP_PORT: intFromString(8080),
-});
+  })
+  // Endurecimento adicional exigido SOMENTE em produção.
+  .superRefine((cfg, ctx) => {
+    if (cfg.NODE_ENV !== 'production') return;
+
+    // CORS não pode ser aberto (liberar todas as origens) em produção.
+    if (cfg.CORS_ORIGINS.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['CORS_ORIGINS'],
+        message:
+          'Em produção é obrigatório definir uma lista branca de origens (CSV). Não é permitido liberar todas.',
+      });
+    }
+
+    // Segredos JWT precisam ser fortes e distintos em produção.
+    for (const chave of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'] as const) {
+      if (cfg[chave].length < 32) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [chave],
+          message: 'Em produção deve ter no mínimo 32 caracteres.',
+        });
+      }
+    }
+    if (cfg.JWT_ACCESS_SECRET === cfg.JWT_REFRESH_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['JWT_REFRESH_SECRET'],
+        message: 'JWT_REFRESH_SECRET deve ser diferente de JWT_ACCESS_SECRET.',
+      });
+    }
+  });
 
 /** Tipo das variaveis de ambiente ja validadas e normalizadas. */
 export type Env = z.infer<typeof envSchema>;
