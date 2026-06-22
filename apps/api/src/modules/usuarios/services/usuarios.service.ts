@@ -1,4 +1,4 @@
-import {
+﻿import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -10,8 +10,8 @@ import { PERMISSION_LEVEL } from '../../../shared/constants';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import { RedisService } from '../../../infra/redis/redis.service';
 import { UsuariosRepository } from '../repositories/usuarios.repository';
-import type { CriarUsuarioDto } from '../dto/criar-usuario.dto';
-import type { AtualizarUsuarioDto } from '../dto/atualizar-usuario.dto';
+import type { CriarUsuarioDto } from '../dtos/criar-usuario.dto';
+import type { AtualizarUsuarioDto } from '../dtos/atualizar-usuario.dto';
 
 /**
  * Serviço de usuários.

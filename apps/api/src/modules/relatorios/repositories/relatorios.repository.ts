@@ -5,7 +5,7 @@ import type { JwtPayload } from '../../../common/types/jwt-payload';
 import {
   montarWhereSubmissoes,
   type FiltrosSubmissao,
-} from '../../submissoes/submissoes-where.util';
+} from '../../submissoes/utils/submissoes-where.util';
 
 /** Linha de submissão usada na geração do Excel. */
 export interface LinhaExport {

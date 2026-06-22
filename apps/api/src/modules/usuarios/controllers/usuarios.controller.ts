@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Delete,
@@ -19,10 +19,10 @@ import {
 import { Permissao } from '../../../common/decorators/permissao.decorator';
 import { UsuarioAtual } from '../../../common/decorators/usuario-atual.decorator';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
-import { AtualizarMeDto } from '../dto/atualizar-me.dto';
-import { AtualizarUsuarioDto } from '../dto/atualizar-usuario.dto';
-import { CriarUsuarioDto } from '../dto/criar-usuario.dto';
-import { RedefinirSenhaDto } from '../dto/redefinir-senha.dto';
+import { AtualizarMeDto } from '../dtos/atualizar-me.dto';
+import { AtualizarUsuarioDto } from '../dtos/atualizar-usuario.dto';
+import { CriarUsuarioDto } from '../dtos/criar-usuario.dto';
+import { RedefinirSenhaDto } from '../dtos/redefinir-senha.dto';
 import { UsuariosService } from '../services/usuarios.service';
 
 @ApiBearerAuth()

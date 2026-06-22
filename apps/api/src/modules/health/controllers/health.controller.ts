@@ -5,9 +5,9 @@ import {
   HealthCheckResult,
   HealthCheckService,
 } from '@nestjs/terminus';
-import { Publico } from '../../common/decorators/publico.decorator';
-import { PrismaHealthIndicator } from './prisma.health';
-import { RedisHealthIndicator } from './redis.health';
+import { Publico } from '../../../common/decorators/publico.decorator';
+import { PrismaHealthIndicator } from '../prisma.health';
+import { RedisHealthIndicator } from '../redis.health';
 
 /**
  * Controller de health-check da API.

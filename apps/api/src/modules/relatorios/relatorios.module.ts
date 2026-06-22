@@ -3,7 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { RelatoriosController } from './controllers/relatorios.controller';
 import { RelatoriosService, RELATORIOS_QUEUE } from './services/relatorios.service';
 import { RelatoriosRepository } from './repositories/relatorios.repository';
-import { RelatoriosProcessor } from './relatorios.processor';
+import { RelatoriosProcessor } from './processors/relatorios.processor';
 
 @Module({
   imports: [BullModule.registerQueue({ name: RELATORIOS_QUEUE })],

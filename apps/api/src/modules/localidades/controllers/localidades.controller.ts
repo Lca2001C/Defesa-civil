@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Get,
@@ -11,8 +11,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
 import { UsuarioAtual } from '../../../common/decorators/usuario-atual.decorator';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
-import { AtualizarCompdecDto } from '../dto/atualizar-compdec.dto';
-import { FiltrosMunicipioDto } from '../dto/filtros-municipio.dto';
+import { AtualizarCompdecDto } from '../dtos/atualizar-compdec.dto';
+import { FiltrosMunicipioDto } from '../dtos/filtros-municipio.dto';
 import { LocalidadesService } from '../services/localidades.service';
 
 @ApiBearerAuth()

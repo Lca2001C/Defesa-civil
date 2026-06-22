@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { RealtimeGateway } from './realtime.gateway';
+import { RealtimeGateway } from './gateways/realtime.gateway';
 import { AuthModule } from '../auth/auth.module';
 import { PainelModule } from '../painel/painel.module';
 

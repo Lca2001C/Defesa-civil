@@ -1,4 +1,4 @@
-import {
+﻿import {
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -6,7 +6,7 @@ import {
 import { RedisService } from '../../../infra/redis/redis.service';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import type { PaginacaoDto } from '../../../common/dto/paginacao.dto';
-import type { AtualizarCompdecDto } from '../dto/atualizar-compdec.dto';
+import type { AtualizarCompdecDto } from '../dtos/atualizar-compdec.dto';
 import { LocalidadesRepository } from '../repositories/localidades.repository';
 
 const CACHE_MUNICIPIOS_MG = 'municipios:lista:mg';

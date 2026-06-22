@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
-import type { AtualizarCompdecDto } from '../dto/atualizar-compdec.dto';
+import type { AtualizarCompdecDto } from '../dtos/atualizar-compdec.dto';
 
 const UF_MG_ID = 31;
 

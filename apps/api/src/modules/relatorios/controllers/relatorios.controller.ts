@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
+﻿import { Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
@@ -6,7 +6,7 @@ import { UsuarioAtual } from '../../../common/decorators/usuario-atual.decorator
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import { StorageService } from '../../../infra/storage/storage.service';
 import { RelatoriosService } from '../services/relatorios.service';
-import { FiltrosExportacaoDto } from '../dto/filtros-exportacao.dto';
+import { FiltrosExportacaoDto } from '../dtos/filtros-exportacao.dto';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 

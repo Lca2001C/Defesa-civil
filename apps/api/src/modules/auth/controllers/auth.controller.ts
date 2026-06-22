@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Get,
@@ -14,13 +14,13 @@ import { UsuarioAtual } from '../../../common/decorators/usuario-atual.decorator
 import { extrairIp } from '../../../shared/utils/format.util';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import { AuthService } from '../services/auth.service';
-import { LoginDto } from '../dto/login.dto';
-import { RefreshDto } from '../dto/refresh.dto';
-import { RegistrarDto } from '../dto/registrar.dto';
+import { LoginDto } from '../dtos/login.dto';
+import { RefreshDto } from '../dtos/refresh.dto';
+import { RegistrarDto } from '../dtos/registrar.dto';
 import {
   RedefinirSenhaComTokenDto,
   SolicitarRecuperacaoDto,
-} from '../dto/recuperar-senha.dto';
+} from '../dtos/recuperar-senha.dto';
 
 @ApiTags('auth')
 @Controller('auth')

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Delete,
@@ -19,21 +19,21 @@ import { memoryStorage } from 'multer';
 import { ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Request, Response, Express } from 'express';
 import { SubmissoesService } from '../services/submissoes.service';
-import { CriarSubmissaoDto } from '../dto/criar-submissao.dto';
-import { AtualizarSubmissaoDto } from '../dto/atualizar-submissao.dto';
-import { RevisaoDto } from '../dto/revisao.dto';
+import { CriarSubmissaoDto } from '../dtos/criar-submissao.dto';
+import { AtualizarSubmissaoDto } from '../dtos/atualizar-submissao.dto';
+import { RevisaoDto } from '../dtos/revisao.dto';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
 import { UsuarioAtual } from '../../../common/decorators/usuario-atual.decorator';
 import { extrairIp } from '../../../shared/utils/format.util';
 import { MAX_LEGACY_UPLOAD_BYTES } from '../../../shared/constants';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
-import { FiltroSubmissaoDto } from '../dto/filtro-submissao.dto';
+import { FiltroSubmissaoDto } from '../dtos/filtro-submissao.dto';
 import {
   IniciarMultipartDto,
   AssinarParteDto,
   CompletarMultipartDto,
   AbortarMultipartDto,
-} from '../dto/anexo-multipart.dto';
+} from '../dtos/anexo-multipart.dto';
 
 @ApiTags('Submissões')
 @Controller('submissoes')

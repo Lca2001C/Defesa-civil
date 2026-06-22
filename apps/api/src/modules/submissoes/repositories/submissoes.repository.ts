@@ -9,7 +9,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
-import { montarWhereSubmissoes, type FiltrosSubmissao } from '../submissoes-where.util';
+import { montarWhereSubmissoes, type FiltrosSubmissao } from '../utils/submissoes-where.util';
 
 interface DadosRespondente {
   protocolo: string;

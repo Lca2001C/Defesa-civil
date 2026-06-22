@@ -1,10 +1,10 @@
-import { Controller, Get, Query } from '@nestjs/common';
+﻿import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
 import { UsuarioAtual } from '../../../common/decorators/usuario-atual.decorator';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import { DashboardService } from '../services/dashboard.service';
-import { FiltrosDashboardDto, FiltrosTimelineDto } from '../dto/filtros-dashboard.dto';
+import { FiltrosDashboardDto, FiltrosTimelineDto } from '../dtos/filtros-dashboard.dto';
 
 @ApiBearerAuth()
 @ApiTags('dashboard')

@@ -1,4 +1,4 @@
-import {
+﻿import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -14,9 +14,9 @@ import { RedisService } from '../../../infra/redis/redis.service';
 import { hashSenha, verificarSenha } from '../../../shared/hash.util';
 import { AuditoriaService } from '../../auditoria/services/auditoria.service';
 import { AuthRepository, type UsuarioComPerfil } from '../repositories/auth.repository';
-import type { TokensDto } from '../dto/tokens.dto';
-import type { RegistrarDto } from '../dto/registrar.dto';
-import type { SolicitarRecuperacaoDto, RedefinirSenhaComTokenDto } from '../dto/recuperar-senha.dto';
+import type { TokensDto } from '../dtos/tokens.dto';
+import type { RegistrarDto } from '../dtos/registrar.dto';
+import type { SolicitarRecuperacaoDto, RedefinirSenhaComTokenDto } from '../dtos/recuperar-senha.dto';
 
 const MAX_TENTATIVAS = 5;
 const BLOQUEIO_SEGUNDOS = 15 * 60;

@@ -1,4 +1,4 @@
-import {
+﻿import {
   BadRequestException,
   Injectable,
   NotFoundException,
@@ -7,10 +7,10 @@ import { CompetenciaStatus, FormularioStatus } from '@prisma/client';
 import type { SchemaFormulario } from '@dcmg/contracts';
 import { FormulariosRepository } from '../repositories/formularios.repository';
 import type { PaginacaoDto } from '../../../common/dto/paginacao.dto';
-import type { CriarFormularioDto } from '../dto/criar-formulario.dto';
-import type { AtualizarFormularioDto } from '../dto/atualizar-formulario.dto';
-import type { CriarVersaoDto } from '../dto/criar-versao.dto';
-import type { PublicarVersaoDto } from '../dto/publicar-versao.dto';
+import type { CriarFormularioDto } from '../dtos/criar-formulario.dto';
+import type { AtualizarFormularioDto } from '../dtos/atualizar-formulario.dto';
+import type { CriarVersaoDto } from '../dtos/criar-versao.dto';
+import type { PublicarVersaoDto } from '../dtos/publicar-versao.dto';
 
 @Injectable()
 export class FormulariosService {

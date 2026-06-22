@@ -1,6 +1,6 @@
 import { Prisma, SubmissaoStatus } from '@prisma/client';
-import type { JwtPayload } from '../../common/types/jwt-payload';
-import { PERMISSION_LEVEL } from '../../shared/constants';
+import type { JwtPayload } from '../../../common/types/jwt-payload';
+import { PERMISSION_LEVEL } from '../../../shared/constants';
 
 /** Filtros aceitos tanto na listagem quanto na exportação de submissões. */
 export interface FiltrosSubmissao {

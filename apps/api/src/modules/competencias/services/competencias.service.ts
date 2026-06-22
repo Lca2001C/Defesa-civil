@@ -1,12 +1,12 @@
-import {
+﻿import {
   BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Competencia, CompetenciaStatus } from '@prisma/client';
 import { CompetenciasRepository } from '../repositories/competencias.repository';
-import type { CriarCompetenciaDto } from '../dto/criar-competencia.dto';
-import type { AtualizarCompetenciaDto } from '../dto/atualizar-competencia.dto';
+import type { CriarCompetenciaDto } from '../dtos/criar-competencia.dto';
+import type { AtualizarCompetenciaDto } from '../dtos/atualizar-competencia.dto';
 import type { PaginacaoDto } from '../../../common/dto/paginacao.dto';
 
 @Injectable()

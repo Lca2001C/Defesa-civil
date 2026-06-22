@@ -1,4 +1,4 @@
-import {
+﻿import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -12,7 +12,7 @@ import {
   SubmissaoStatus,
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { RealtimeGateway } from '../../realtime/realtime.gateway';
+import { RealtimeGateway } from '../../realtime/gateways/realtime.gateway';
 import { FormulariosService } from '../../formularios/services/formularios.service';
 import { StorageService, PART_SIZE_BYTES } from '../../../infra/storage/storage.service';
 import { NotificacoesService } from '../../notificacoes/services/notificacoes.service';
@@ -26,16 +26,16 @@ import { AuditoriaService } from '../../auditoria/services/auditoria.service';
 import { SubmissoesRepository } from '../repositories/submissoes.repository';
 import { SubmissaoExportService, type DetalheExport } from './submissao-export.service';
 import { tipoArquivoPermitido } from '../validators/anexo.validator';
-import type { CriarSubmissaoDto } from '../dto/criar-submissao.dto';
-import type { AtualizarSubmissaoDto } from '../dto/atualizar-submissao.dto';
-import type { RevisaoDto } from '../dto/revisao.dto';
+import type { CriarSubmissaoDto } from '../dtos/criar-submissao.dto';
+import type { AtualizarSubmissaoDto } from '../dtos/atualizar-submissao.dto';
+import type { RevisaoDto } from '../dtos/revisao.dto';
 import type {
   IniciarMultipartDto,
   AssinarParteDto,
   CompletarMultipartDto,
   AbortarMultipartDto,
-} from '../dto/anexo-multipart.dto';
-import type { FiltrosSubmissao } from '../submissoes-where.util';
+} from '../dtos/anexo-multipart.dto';
+import type { FiltrosSubmissao } from '../utils/submissoes-where.util';
 
 type StatusMapa = 'RESPONDIDO' | 'EM_PREENCHIMENTO' | 'NAO_RESPONDEU';
 

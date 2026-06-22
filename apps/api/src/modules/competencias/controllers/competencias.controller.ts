@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Get,
@@ -12,9 +12,9 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
 import { CompetenciasService } from '../services/competencias.service';
-import { AtualizarCompetenciaDto } from '../dto/atualizar-competencia.dto';
-import { CriarCompetenciaDto } from '../dto/criar-competencia.dto';
-import { FiltrosCompetenciaDto } from '../dto/filtros-competencia.dto';
+import { AtualizarCompetenciaDto } from '../dtos/atualizar-competencia.dto';
+import { CriarCompetenciaDto } from '../dtos/criar-competencia.dto';
+import { FiltrosCompetenciaDto } from '../dtos/filtros-competencia.dto';
 
 @ApiBearerAuth()
 @ApiTags('competencias')

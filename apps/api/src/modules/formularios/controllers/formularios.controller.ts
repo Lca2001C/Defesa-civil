@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Delete,
@@ -15,10 +15,10 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { FormularioStatus } from '@prisma/client';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
 import { PaginacaoDto } from '../../../common/dto/paginacao.dto';
-import { AtualizarFormularioDto } from '../dto/atualizar-formulario.dto';
-import { CriarFormularioDto } from '../dto/criar-formulario.dto';
-import { CriarVersaoDto } from '../dto/criar-versao.dto';
-import { PublicarVersaoDto } from '../dto/publicar-versao.dto';
+import { AtualizarFormularioDto } from '../dtos/atualizar-formulario.dto';
+import { CriarFormularioDto } from '../dtos/criar-formulario.dto';
+import { CriarVersaoDto } from '../dtos/criar-versao.dto';
+import { PublicarVersaoDto } from '../dtos/publicar-versao.dto';
 import { FormulariosService } from '../services/formularios.service';
 
 @ApiBearerAuth()

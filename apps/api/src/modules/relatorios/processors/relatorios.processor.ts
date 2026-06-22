@@ -6,7 +6,7 @@ import {
   RelatoriosService,
   type ExportJobData,
   type ExportJobResultado,
-} from './services/relatorios.service';
+} from '../services/relatorios.service';
 
 @Processor(RELATORIOS_QUEUE)
 export class RelatoriosProcessor extends WorkerHost {

@@ -10,7 +10,7 @@ import { StorageService } from '../../../infra/storage/storage.service';
 import { mascaraCpf } from '../../../shared/utils/format.util';
 import { EXPORT_BATCH_SIZE } from '../../../shared/constants';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
-import type { FiltrosSubmissao } from '../../submissoes/submissoes-where.util';
+import type { FiltrosSubmissao } from '../../submissoes/utils/submissoes-where.util';
 import { RelatoriosRepository, type LinhaExport } from '../repositories/relatorios.repository';
 
 export const RELATORIOS_QUEUE = 'relatorios';

@@ -11,10 +11,10 @@ import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import type { Env } from '../../config/env.validation';
-import type { JwtPayload } from '../../common/types/jwt-payload';
-import { PainelService } from '../painel/services/painel.service';
-import { resolverOrigensCors } from '../../shared/cors.util';
+import type { Env } from '../../../config/env.validation';
+import type { JwtPayload } from '../../../common/types/jwt-payload';
+import { PainelService } from '../../painel/services/painel.service';
+import { resolverOrigensCors } from '../../../shared/cors.util';
 
 /** Janela mínima entre broadcasts de stats por competência (anti-tempestade). */
 const STATS_THROTTLE_MS = 3000;
