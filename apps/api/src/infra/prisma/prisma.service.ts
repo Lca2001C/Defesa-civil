@@ -1,8 +1,9 @@
 import {
   Injectable,
   Logger,
-  OnModuleInit,
   type INestApplication,
+  type OnModuleDestroy,
+  type OnModuleInit,
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
@@ -14,7 +15,7 @@ import { PrismaClient } from '@prisma/client';
  * para encerrar a conexao de forma limpa no desligamento.
  */
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit {
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
 
   async onModuleInit(): Promise<void> {
@@ -22,9 +23,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     this.logger.log('Conexao com o PostgreSQL estabelecida (Prisma).');
   }
 
+  async onModuleDestroy(): Promise<void> {
+    await this.$disconnect();
+    this.logger.log('Conexao com o PostgreSQL encerrada (Prisma).');
+  }
+
   /**
-   * Habilita o encerramento gracioso: ao receber o evento de shutdown
-   * do Prisma, fecha a aplicacao Nest (que dispara onModuleDestroy etc.).
+   * Registra listener `beforeExit` para fechar o app quando o event loop
+   * esvazia naturalmente (complementa o SIGTERM tratado por enableShutdownHooks).
    */
   enableShutdownHooks(app: INestApplication): void {
     process.on('beforeExit', () => {

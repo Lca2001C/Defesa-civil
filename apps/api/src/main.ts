@@ -98,22 +98,26 @@ async function bootstrap(): Promise<void> {
   const prisma = app.get(PrismaService);
   prisma.enableShutdownHooks(app);
 
-  // Documentacao Swagger em /{API_PREFIX}/docs.
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('API Defesa Civil MG')
-    .setDescription(
-      'API da Plataforma Defesa Civil MG — fundacao (Fase 1).',
-    )
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  const documento = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup(`${prefixo}/docs`, app, documento);
+  // Documentacao Swagger em /{API_PREFIX}/docs — apenas fora de producao.
+  if (config.get('NODE_ENV', { infer: true }) !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('API Defesa Civil MG')
+      .setDescription(
+        'API da Plataforma Defesa Civil MG — fundacao (Fase 1).',
+      )
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+    const documento = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup(`${prefixo}/docs`, app, documento);
+  }
 
   await app.listen(porta, '0.0.0.0');
-  logger.log(
-    `API ouvindo em http://0.0.0.0:${porta}/${prefixo} (docs em /${prefixo}/docs)`,
-  );
+  const docsInfo =
+    config.get('NODE_ENV', { infer: true }) !== 'production'
+      ? ` (docs em /${prefixo}/docs)`
+      : '';
+  logger.log(`API ouvindo em http://0.0.0.0:${porta}/${prefixo}${docsInfo}`);
 }
 
 void bootstrap();
