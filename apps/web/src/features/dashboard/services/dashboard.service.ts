@@ -1,5 +1,6 @@
 import { api } from "../../../lib/api";
-import type { Resumo, TimelineItem, PorRegional, PorFormulario, ExportJobEstado } from "../types";
+import { exportarSubmissoes } from "../../../lib/exportSubmissoes";
+import type { Resumo, TimelineItem, PorRegional, PorFormulario } from "../types";
 
 /** Camada de serviço de API da feature de dashboard (indicadores + exportação). */
 export const DashboardService = {
@@ -15,9 +16,6 @@ export const DashboardService = {
   porFormulario: (competenciaId: string) =>
     api.get<PorFormulario[]>(`/dashboard/por-formulario?competenciaId=${competenciaId}`),
 
-  enfileirarExport: (competenciaId: string) =>
-    api.post<{ jobId: string }>(`/relatorios/submissoes/export?competenciaId=${competenciaId}`),
-
-  consultarExport: (jobId: string) =>
-    api.get<ExportJobEstado>(`/relatorios/export/${jobId}`),
+  /** Exporta as submissões da competência em Excel (download direto). */
+  exportar: (competenciaId: string) => exportarSubmissoes({ competenciaId }),
 };

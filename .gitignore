@@ -4,6 +4,11 @@ node_modules/
 # Saidas de build
 dist/
 build/
+# Artefatos TS compilados em src/ (o pacote contracts publica em dist/)
+packages/contracts/src/*.js
+packages/contracts/src/*.js.map
+packages/contracts/src/*.d.ts
+packages/contracts/src/*.d.ts.map
 
 # Variaveis de ambiente (NUNCA versionar segredos reais)
 .env

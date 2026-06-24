@@ -21,7 +21,6 @@ import type { GeoJsonObject, Feature } from "geojson";
 import type { Layer, PathOptions, LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { cores } from "../../theme/tokens";
-import { usePainelSocket, type StatusUpdateEvento } from "../../hooks/usePainelSocket";
 import { QUERY_KEYS } from "../../shared/constants";
 import { PainelService } from "./services/painel.service";
 import { CompetenciasService } from "../competencias/services/competencias.service";
@@ -102,7 +101,10 @@ export default function PainelPage() {
     queryKey: [QUERY_KEYS.PAINEL, "status", competenciaId],
     queryFn: () => PainelService.status(competenciaId),
     enabled: !!competenciaId,
-    staleTime: 30_000,
+    staleTime: 20_000,
+    // Atualização "quase em tempo real" via polling (substitui o WebSocket).
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {
@@ -119,11 +121,13 @@ export default function PainelPage() {
   }, [statusLista]);
 
   // ── estatísticas ──────────────────────────────────────────────────────────
-  const { data: stats, refetch: refetchStats } = useQuery({
+  const { data: stats } = useQuery({
     queryKey: [QUERY_KEYS.PAINEL, "stats", competenciaId],
     queryFn: () => PainelService.stats(competenciaId),
     enabled: !!competenciaId,
-    staleTime: 30_000,
+    staleTime: 20_000,
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
   });
 
   // ── drawer município ──────────────────────────────────────────────────────
@@ -133,34 +137,8 @@ export default function PainelPage() {
     enabled: drawerMunicipioId !== null && !!competenciaId,
   });
 
-  // ── websocket ─────────────────────────────────────────────────────────────
-  const onStatusUpdate = useCallback(
-    (evento: StatusUpdateEvento) => {
-      if (evento.competenciaId !== competenciaId) return;
-      const ibge = String(evento.municipioId);
-      statusMapRef.current.set(ibge, evento.status);
-      const layer = geojsonLayerRef.current[ibge];
-      if (layer) {
-        layer.setStyle({
-          fillColor: COR_STATUS[evento.status],
-          fillOpacity: 0.75,
-          weight: 0.5,
-          color: "#1e3a5f",
-        });
-      }
-      void refetchStats();
-    },
-    [competenciaId, refetchStats]
-  );
-
-  const onStats = useCallback(
-    (_: Record<string, number>) => {
-      void refetchStats();
-    },
-    [refetchStats]
-  );
-
-  usePainelSocket({ competenciaId: competenciaId || null, onStatusUpdate, onStats });
+  // O painel é atualizado por polling (refetchInterval) nas queries acima; o
+  // useEffect de `statusLista` repinta as camadas do mapa a cada atualização.
 
   // ── GeoJSON de MG ─────────────────────────────────────────────────────────
   useEffect(() => {

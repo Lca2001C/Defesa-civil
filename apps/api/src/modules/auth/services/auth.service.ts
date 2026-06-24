@@ -10,8 +10,9 @@ import { JwtService } from '@nestjs/jwt';
 import { randomBytes, createHash } from 'crypto';
 import type { Env } from '../../../config/env.validation';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
-import { RedisService } from '../../../infra/redis/redis.service';
+import { CacheService } from '../../../infra/cache/cache.service';
 import { hashSenha, verificarSenha } from '../../../shared/hash.util';
+import { escapeHtml } from '../../../shared/utils/format.util';
 import { AuditoriaService } from '../../auditoria/services/auditoria.service';
 import { AuthRepository, type UsuarioComPerfil } from '../repositories/auth.repository';
 import type { TokensDto } from '../dtos/tokens.dto';
@@ -35,7 +36,7 @@ export interface OrigemRequisicao {
 export class AuthService {
   constructor(
     private readonly repo: AuthRepository,
-    private readonly redis: RedisService,
+    private readonly cache: CacheService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService<Env, true>,
     private readonly auditoria: AuditoriaService,
@@ -44,25 +45,24 @@ export class AuthService {
   // ── Login ──────────────────────────────────────────────────────────────────
 
   async login(email: string, senha: string, origem: OrigemRequisicao = {}): Promise<TokensDto> {
-    const rc = this.redis.getClient();
     const chaveAttempts = `login_fail:${email}`;
 
-    const tentativas = await rc.get(chaveAttempts);
-    if (tentativas && parseInt(tentativas) >= MAX_TENTATIVAS) {
+    const tentativas = await this.cache.getNumero(chaveAttempts);
+    if (tentativas >= MAX_TENTATIVAS) {
       throw new ForbiddenException(
         'Conta temporariamente bloqueada por excesso de tentativas. Tente novamente em 15 minutos.',
       );
     }
 
     const usuario = await this.repo.buscarPorEmailComPerfil(email);
-    const senhaValida =
-      !!usuario?.ativo && (await verificarSenha(usuario.senhaHash, senha));
+    // Sempre executa um verify Argon2 (contra um hash dummy quando o usuário não
+    // existe) para equalizar o tempo de resposta e evitar enumeração por timing.
+    const hashParaVerificar = usuario?.senhaHash ?? (await this.obterDummyHash());
+    const senhaConfere = await verificarSenha(hashParaVerificar, senha);
+    const senhaValida = !!usuario?.ativo && senhaConfere;
 
     if (!senhaValida || !usuario) {
-      const pipeline = rc.pipeline();
-      pipeline.incr(chaveAttempts);
-      pipeline.expire(chaveAttempts, BLOQUEIO_SEGUNDOS);
-      await pipeline.exec();
+      await this.cache.incr(chaveAttempts, BLOQUEIO_SEGUNDOS);
       void this.auditoria.registrar({
         atorId: usuario?.id ?? null,
         acao: 'LOGIN_FALHA',
@@ -74,7 +74,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
-    await rc.del(chaveAttempts);
+    await this.cache.del(chaveAttempts);
     this.repo.marcarUltimoAcesso(usuario.id);
 
     void this.auditoria.registrar({
@@ -101,8 +101,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token inválido ou expirado.');
     }
 
-    const rc = this.redis.getClient();
-    const hashArmazenado = await rc.get(`refresh:${payload.sub}`);
+    const hashArmazenado = await this.repo.buscarRefresh(payload.sub);
     if (!hashArmazenado) {
       throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
     }
@@ -123,7 +122,7 @@ export class AuthService {
   // ── Logout ─────────────────────────────────────────────────────────────────
 
   async logout(usuarioId: string, origem: OrigemRequisicao = {}): Promise<void> {
-    await this.redis.getClient().del(`refresh:${usuarioId}`);
+    await this.repo.deletarRefresh(usuarioId);
     void this.auditoria.registrar({
       atorId: usuarioId,
       acao: 'LOGOUT',
@@ -221,41 +220,37 @@ export class AuthService {
 
   /** Incrementa o contador de reset e indica se o limite da janela foi excedido. */
   private async resetExcedido(chave: string): Promise<boolean> {
-    const rc = this.redis.getClient();
-    const n = await rc.incr(chave);
-    if (n === 1) await rc.expire(chave, RESET_JANELA_SEGUNDOS);
+    const n = await this.cache.incr(chave, RESET_JANELA_SEGUNDOS);
     return n > RESET_MAX;
   }
 
   private async enviarEmailRecuperacao(email: string, nome: string, token: string): Promise<void> {
-    const baseUrl =
-      (this.config.get('PUBLIC_BASE_URL' as keyof Env, { infer: true }) as string | undefined) ??
-      'http://localhost:3000';
-    const link = `${baseUrl}/redefinir-senha?token=${token}`;
+    const baseUrl = this.config.get('PUBLIC_BASE_URL', { infer: true }) || 'http://localhost:3000';
+    const link = `${baseUrl}/redefinir-senha?token=${encodeURIComponent(token)}`;
 
-    const smtpHost = this.config.get('SMTP_HOST' as keyof Env, { infer: true }) as string | undefined;
+    const smtpHost = this.config.get('SMTP_HOST', { infer: true });
     if (!smtpHost) return;
 
     // Importação dinâmica para evitar erro se nodemailer não estiver instalado
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const nodemailer = require('nodemailer') as typeof import('nodemailer');
+    const port = this.config.get('SMTP_PORT', { infer: true });
     const transporter = nodemailer.createTransport({
       host: smtpHost,
-      port: Number(this.config.get('SMTP_PORT' as keyof Env, { infer: true }) ?? 587),
-      secure: false,
+      port,
+      secure: port === 465,
+      requireTLS: port !== 465,
       auth: {
-        user: this.config.get('SMTP_USER' as keyof Env, { infer: true }) as string,
-        pass: this.config.get('SMTP_PASS' as keyof Env, { infer: true }) as string,
+        user: this.config.get('SMTP_USER', { infer: true }),
+        pass: this.config.get('SMTP_PASS', { infer: true }),
       },
     });
-    const from =
-      (this.config.get('SMTP_FROM' as keyof Env, { infer: true }) as string | undefined) ??
-      '"Defesa Civil MG" <noreply@defesacivil.mg.gov.br>';
+    const from = this.config.get('SMTP_FROM', { infer: true });
     await transporter.sendMail({
       from,
       to: email,
       subject: 'Redefinição de senha — Defesa Civil MG',
-      html: `<p>Olá, <strong>${nome}</strong>.</p>
+      html: `<p>Olá, <strong>${escapeHtml(nome)}</strong>.</p>
              <p>Clique no link abaixo para redefinir sua senha. O link expira em ${RECOVERY_TTL_HORAS} hora(s).</p>
              <p><a href="${link}">${link}</a></p>
              <p>Se você não solicitou a redefinição, ignore este e-mail.</p>`,
@@ -280,7 +275,7 @@ export class AuthService {
 
     // Invalida todas as sessões ativas (logout global).
     const usuarioId = await this.repo.buscarIdPorEmail(recuperacao.email);
-    if (usuarioId) await this.redis.getClient().del(`refresh:${usuarioId}`);
+    if (usuarioId) await this.repo.deletarRefresh(usuarioId);
 
     void this.auditoria.registrar({
       atorId: usuarioId,
@@ -296,6 +291,15 @@ export class AuthService {
 
   hashSenha(senha: string): Promise<string> {
     return hashSenha(senha);
+  }
+
+  /** Hash Argon2 dummy (calculado uma vez) para equalizar o tempo do login. */
+  private dummyHashCache: string | null = null;
+  private async obterDummyHash(): Promise<string> {
+    if (!this.dummyHashCache) {
+      this.dummyHashCache = await hashSenha('dummy-password-para-timing-uniforme');
+    }
+    return this.dummyHashCache;
   }
 
   private async gerarTokens(usuario: UsuarioComPerfil): Promise<TokensDto> {
@@ -324,7 +328,8 @@ export class AuthService {
     ]);
 
     const hashRefresh = await hashSenha(refreshToken);
-    await this.redis.getClient().setex(`refresh:${usuario.id}`, this.parseTtl(refreshTtl), hashRefresh);
+    const expiraEm = new Date(Date.now() + this.parseTtl(refreshTtl) * 1000);
+    await this.repo.salvarRefresh(usuario.id, hashRefresh, expiraEm);
 
     return { accessToken, refreshToken, expiresIn: this.parseTtl(accessTtl), tipo: 'Bearer' };
   }

@@ -1,33 +1,21 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue, Job } from 'bullmq';
 import ExcelJS from 'exceljs';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { StorageService } from '../../../infra/storage/storage.service';
 import { mascaraCpf } from '../../../shared/utils/format.util';
 import { EXPORT_BATCH_SIZE } from '../../../shared/constants';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import type { FiltrosSubmissao } from '../../submissoes/utils/submissoes-where.util';
 import { RelatoriosRepository, type LinhaExport } from '../repositories/relatorios.repository';
 
-export const RELATORIOS_QUEUE = 'relatorios';
-
 /** Mesmos filtros da listagem (competenciaId opcional na exportação). */
 export type FiltrosExportacao = FiltrosSubmissao;
 
-export interface ExportJobData {
-  filtros: FiltrosExportacao;
-  solicitanteId: string;
-  /** Escopo do solicitante — aplicado ao `where` para não vazar dados fora do escopo. */
-  usuario: JwtPayload;
-}
-
-export interface ExportJobResultado {
-  arquivoId: string;
-  chave: string;
+/** Resultado da geração síncrona: caminho temporário do .xlsx e nome de download. */
+export interface ExportResultado {
+  caminho: string;
   nome: string;
 }
 
@@ -69,67 +57,38 @@ const CABECALHOS = [
   { header: 'Aprovado em', width: 20 },
 ];
 
-const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
 @Injectable()
 export class RelatoriosService {
   private readonly logger = new Logger(RelatoriosService.name);
 
-  constructor(
-    private readonly repo: RelatoriosRepository,
-    private readonly storage: StorageService,
-    @InjectQueue(RELATORIOS_QUEUE) private readonly fila: Queue,
-  ) {}
+  constructor(private readonly repo: RelatoriosRepository) {}
 
-  // ── Enfileiramento e consulta de jobs ──────────────────────────────────────
+  // ── Geração síncrona do Excel ──────────────────────────────────────────────
 
-  /** Enfileira a geração do Excel e retorna o ID do job para acompanhamento. */
-  async enfileirarExport(filtros: FiltrosExportacao, usuario: JwtPayload): Promise<string> {
+  /**
+   * Gera o .xlsx em streaming para um arquivo temporário e devolve o caminho +
+   * nome de download. O controller faz o stream do arquivo na resposta e apaga
+   * o temporário ao final. Sem fila: execução síncrona na própria request.
+   */
+  async gerarExport(filtros: FiltrosExportacao, usuario: JwtPayload): Promise<ExportResultado> {
     if (filtros.competenciaId && !(await this.repo.competenciaExiste(filtros.competenciaId))) {
       throw new NotFoundException('Competência não encontrada');
     }
 
-    const job = await this.fila.add(
-      'exportar-submissoes',
-      { filtros, solicitanteId: usuario.sub, usuario } satisfies ExportJobData,
-      { attempts: 2, backoff: { type: 'exponential', delay: 3000 }, removeOnComplete: 50, removeOnFail: 50 },
-    );
-    return job.id!;
-  }
-
-  /** Estado atual de um job de exportação. */
-  async consultarJob(jobId: string): Promise<{
-    estado: string;
-    progresso: number;
-    resultado: ExportJobResultado | null;
-  }> {
-    const job = await this.fila.getJob(jobId);
-    if (!job) throw new NotFoundException('Job de exportação não encontrado.');
-    const estado = await job.getState();
-    const progresso = typeof job.progress === 'number' ? job.progress : 0;
-    const resultado = (job.returnvalue as ExportJobResultado | undefined) ?? null;
-    return { estado, progresso, resultado };
-  }
-
-  // ── Execução do job (chamado pelo processor) ───────────────────────────────
-
-  /** Gera o .xlsx em streaming, salva no storage e devolve o artefato. */
-  async executarExport(job: Job<ExportJobData>): Promise<ExportJobResultado> {
-    const { filtros, usuario } = job.data;
     const competenciaNome = await this.resolverNomeCompetencia(filtros.competenciaId);
-    const tmpPath = path.join(os.tmpdir(), `export-${randomUUID()}.xlsx`);
+    const caminho = path.join(os.tmpdir(), `export-${randomUUID()}.xlsx`);
 
     try {
-      await this.gerarExcelStream(tmpPath, competenciaNome, filtros, usuario, job);
-
-      const nome = `submissoes_${Date.now()}.xlsx`;
-      const arquivo = await this.storage.salvarDeCaminho(tmpPath, nome, XLSX_MIME);
-
-      this.logger.log(`[job ${job.id}] Export concluído: arquivo=${arquivo.id} (${arquivo.tamanhoBytes} bytes)`);
-      return { arquivoId: arquivo.id, chave: arquivo.chave, nome };
-    } finally {
-      await fs.promises.rm(tmpPath, { force: true });
+      await this.gerarExcelStream(caminho, competenciaNome, filtros, usuario);
+    } catch (e) {
+      // Remove o .xlsx parcial para não acumular lixo no /tmp da VM.
+      await fs.promises.rm(caminho, { force: true }).catch(() => undefined);
+      throw e;
     }
+
+    const nome = `submissoes_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    this.logger.log(`Export gerado: ${caminho} (nome=${nome})`);
+    return { caminho, nome };
   }
 
   private async resolverNomeCompetencia(competenciaId?: string): Promise<string> {
@@ -146,7 +105,6 @@ export class RelatoriosService {
     competenciaNome: string,
     filtros: FiltrosExportacao,
     usuario: JwtPayload,
-    job: Job<ExportJobData>,
   ): Promise<void> {
     const total = await this.repo.contar(filtros, usuario);
 
@@ -154,7 +112,7 @@ export class RelatoriosService {
     workbook.creator = 'Plataforma Defesa Civil MG';
 
     const sheet = this.criarPlanilhaComCabecalho(workbook);
-    await this.preencherLinhas(sheet, filtros, usuario, total, job);
+    await this.preencherLinhas(sheet, filtros, usuario);
     sheet.commit();
 
     await this.adicionarResumo(workbook, competenciaNome, filtros, usuario, total);
@@ -182,10 +140,7 @@ export class RelatoriosService {
     sheet: ExcelJS.Worksheet,
     filtros: FiltrosExportacao,
     usuario: JwtPayload,
-    total: number,
-    job: Job<ExportJobData>,
   ): Promise<void> {
-    let processados = 0;
     let cursor: string | undefined;
 
     for (;;) {
@@ -194,9 +149,7 @@ export class RelatoriosService {
 
       for (const s of lote) this.escreverLinha(sheet, s);
 
-      processados += lote.length;
       cursor = lote[lote.length - 1]!.id;
-      if (total > 0) await job.updateProgress(Math.round((processados / total) * 100));
       if (lote.length < EXPORT_BATCH_SIZE) break;
     }
   }

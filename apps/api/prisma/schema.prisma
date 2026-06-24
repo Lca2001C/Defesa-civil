@@ -229,15 +229,30 @@ model Usuario {
   mfaSecret  String?  @map("mfa_secret")
   mfaAtivo   Boolean  @default(false) @map("mfa_ativo")
 
-  submissoes Submissao[]
-  historico  RespostaHistorico[]
-  logs       LogAuditoria[]
-  aceites    AceiteTermoLgpd[]
+  submissoes   Submissao[]
+  historico    RespostaHistorico[]
+  logs         LogAuditoria[]
+  aceites      AceiteTermoLgpd[]
+  refreshToken RefreshToken?
 
   @@index([perfilId])
   @@index([municipioId])
   @@index([regionalId])
   @@map("usuarios")
+}
+
+// Refresh token ativo por usuário (uma sessão por usuário — o setex anterior do
+// Redis era sobrescrito, então mantemos 1 linha por usuário). Persistir no banco
+// mantém as sessões válidas entre reinícios da API. Guardamos apenas o HASH.
+model RefreshToken {
+  usuarioId String   @id @map("usuario_id")
+  tokenHash String   @map("token_hash")
+  expiraEm  DateTime @map("expira_em")
+  criadoEm  DateTime @default(now()) @map("created_at")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
 }
 
 // ========================= COMPETENCIA =======================================
@@ -477,6 +492,7 @@ model Resposta {
 
   @@unique([submissaoId, perguntaId])
   @@index([submissaoId])
+  @@index([perguntaId])
   @@map("respostas")
 }
 

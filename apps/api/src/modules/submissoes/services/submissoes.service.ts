@@ -12,11 +12,10 @@ import {
   SubmissaoStatus,
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { RealtimeGateway } from '../../realtime/gateways/realtime.gateway';
 import { FormulariosService } from '../../formularios/services/formularios.service';
-import { StorageService, PART_SIZE_BYTES } from '../../../infra/storage/storage.service';
+import { StorageService } from '../../../infra/storage/storage.service';
 import { NotificacoesService } from '../../notificacoes/services/notificacoes.service';
-import { RedisService } from '../../../infra/redis/redis.service';
+import { CacheService } from '../../../infra/cache/cache.service';
 import { prefixoCachePainel } from '../../painel/services/painel.service';
 import { PERMISSION_LEVEL } from '../../../shared/constants';
 import type { Env } from '../../../config/env.validation';
@@ -29,15 +28,8 @@ import { tipoArquivoPermitido } from '../validators/anexo.validator';
 import type { CriarSubmissaoDto } from '../dtos/criar-submissao.dto';
 import type { AtualizarSubmissaoDto } from '../dtos/atualizar-submissao.dto';
 import type { RevisaoDto } from '../dtos/revisao.dto';
-import type {
-  IniciarMultipartDto,
-  AssinarParteDto,
-  CompletarMultipartDto,
-  AbortarMultipartDto,
-} from '../dtos/anexo-multipart.dto';
+import type { IniciarAnexoDto, CompletarAnexoDto } from '../dtos/anexo-multipart.dto';
 import type { FiltrosSubmissao } from '../utils/submissoes-where.util';
-
-type StatusMapa = 'RESPONDIDO' | 'EM_PREENCHIMENTO' | 'NAO_RESPONDEU';
 
 interface ContextoAutomatico {
   municipioId: number;
@@ -53,11 +45,10 @@ const UF_PADRAO = 'MG';
 export class SubmissoesService {
   constructor(
     private readonly repo: SubmissoesRepository,
-    private readonly realtime: RealtimeGateway,
     private readonly notificacoes: NotificacoesService,
     private readonly formularios: FormulariosService,
     private readonly storage: StorageService,
-    private readonly redis: RedisService,
+    private readonly cache: CacheService,
     private readonly exportService: SubmissaoExportService,
     private readonly auditoria: AuditoriaService,
     private readonly config: ConfigService<Env, true>,
@@ -77,6 +68,7 @@ export class SubmissoesService {
     userAgent?: string,
   ): Promise<Submissao> {
     const autor = await this.repo.buscarAutor(usuario.sub);
+    await this.validarMunicipioNoEscopo(dto.municipioId, usuario);
     await this.validarVersaoPublicada(dto.formularioVersaoId);
     const competencia = await this.validarCompetenciaAberta(dto.competenciaId);
 
@@ -109,7 +101,7 @@ export class SubmissoesService {
     );
 
     if (enviar) {
-      this.emitirStatus(submissao.municipioId, submissao.competenciaId, 'RESPONDIDO', submissao.protocolo);
+      this.invalidarCachePainel(submissao.competenciaId);
       this.notificar('submissao_enviada', submissao);
     }
     return submissao;
@@ -264,7 +256,7 @@ export class SubmissoesService {
       protocolo,
     );
 
-    this.emitirStatus(atualizado.municipioId, atualizado.competenciaId, 'RESPONDIDO', atualizado.protocolo);
+    this.invalidarCachePainel(atualizado.competenciaId);
     this.notificar('submissao_enviada', atualizado);
     return atualizado;
   }
@@ -329,9 +321,10 @@ export class SubmissoesService {
     return this.repo.criarAnexo(id, arq.id, perguntaCodigo ?? null);
   }
 
-  // ── Upload multipart direto ao R2 (anexos grandes, até 50 GB) ──────────────
+  // ── Upload direto ao Azure Blob (SAS, PUT único) ───────────────────────────
 
-  async iniciarAnexoMultipart(id: string, dto: IniciarMultipartDto, usuario: JwtPayload) {
+  /** Etapa 1: valida e devolve a URL SAS de escrita (ou modo local em dev). */
+  async iniciarAnexo(id: string, dto: IniciarAnexoDto, usuario: JwtPayload) {
     await this.carregarParaEscopo(id, usuario);
 
     if (!tipoArquivoPermitido(dto.nomeOriginal, dto.mimeType)) {
@@ -343,50 +336,60 @@ export class SubmissoesService {
       );
     }
 
-    if (!this.storage.suportaPresigned) {
+    if (!this.storage.suportaUploadDireto) {
       return { modo: 'local' as const };
     }
 
-    const { chave, uploadId } = await this.storage.iniciarMultipart(dto.nomeOriginal, dto.mimeType);
-    return { modo: 's3' as const, chave, uploadId, partSize: PART_SIZE_BYTES };
+    const { chave, url } = await this.storage.gerarUploadUrl(dto.nomeOriginal, dto.mimeType);
+    // Registra a chave emitida para ESTA submissão; só ela poderá ser concluída
+    // depois (impede o cliente de registrar um blob arbitrário). TTL > SAS (15min).
+    await this.cache.cacheSet(this.chaveAnexoEmitida(id, chave), dto.nomeOriginal, 1200);
+    return { modo: 'azure' as const, chave, url };
   }
 
-  async assinarParteAnexo(id: string, dto: AssinarParteDto, usuario: JwtPayload) {
-    await this.carregarParaEscopo(id, usuario);
-    const url = await this.storage.assinarParte(dto.chave, dto.uploadId, dto.numeroParte);
-    return { url };
-  }
-
-  async completarAnexoMultipart(id: string, dto: CompletarMultipartDto, usuario: JwtPayload) {
+  /** Etapa 2: após o PUT direto no Blob, registra o anexo no banco. */
+  async completarAnexo(id: string, dto: CompletarAnexoDto, usuario: JwtPayload) {
     await this.carregarParaEscopo(id, usuario);
 
     if (!tipoArquivoPermitido(dto.nomeOriginal, dto.mimeType)) {
       throw new BadRequestException('Tipo de arquivo não permitido.');
     }
 
-    await this.storage.completarMultipart(
-      dto.chave,
-      dto.uploadId,
-      dto.partes.map((p) => ({ numero: p.numero, etag: p.etag })),
-    );
+    // A chave precisa ter sido emitida por iniciarAnexo PARA ESTA submissão.
+    const emitida = await this.cache.cacheGet<string>(this.chaveAnexoEmitida(id, dto.chave));
+    if (!emitida) {
+      throw new BadRequestException('Upload inválido ou expirado. Reinicie o envio do anexo.');
+    }
+
+    // NÃO confia no tamanho enviado pelo cliente: lê o blob real.
+    const stat = await this.storage.statBlob(dto.chave);
+    if (!stat) {
+      throw new BadRequestException('O arquivo não foi encontrado no storage. Refaça o upload.');
+    }
+    if (stat.tamanhoBytes > this.maxUploadBytes) {
+      // Remove o blob que excede o limite e recusa.
+      await this.storage.deletar(dto.chave).catch(() => undefined);
+      throw new BadRequestException(
+        `Arquivo excede o limite de ${this.config.get('MAX_UPLOAD_MB', { infer: true })} MB.`,
+      );
+    }
 
     const arq = await this.storage.registrarArquivo({
       chave: dto.chave,
       nomeOriginal: dto.nomeOriginal,
       mimeType: dto.mimeType,
-      tamanhoBytes: dto.tamanhoBytes,
+      tamanhoBytes: stat.tamanhoBytes,
     });
 
+    await this.cache.del(this.chaveAnexoEmitida(id, dto.chave));
     return this.repo.criarAnexo(id, arq.id, dto.perguntaCodigo ?? null);
   }
 
-  async abortarAnexoMultipart(id: string, dto: AbortarMultipartDto, usuario: JwtPayload) {
-    await this.carregarParaEscopo(id, usuario);
-    await this.storage.abortarMultipart(dto.chave, dto.uploadId);
-    return { ok: true };
+  private chaveAnexoEmitida(submissaoId: string, chave: string): string {
+    return `anexo:emitida:${submissaoId}:${chave}`;
   }
 
-  /** URL de download do anexo: presigned GET (S3/R2) — direto do bucket. */
+  /** URL SAS de download do anexo — direto do Blob. */
   async urlDownloadAnexo(
     id: string,
     anexoId: string,
@@ -398,8 +401,8 @@ export class SubmissoesService {
     if (!anexo || anexo.submissaoId !== id) {
       throw new NotFoundException('Anexo não encontrado nesta submissão.');
     }
-    if (!this.storage.suportaPresigned) {
-      throw new BadRequestException('Download direto disponível apenas com storage S3/R2.');
+    if (!this.storage.suportaUploadDireto) {
+      throw new BadRequestException('Download direto disponível apenas com storage Azure.');
     }
     const url = await this.storage.assinarDownload(anexo.arquivo.chave, anexo.arquivo.nomeOriginal);
 
@@ -436,6 +439,9 @@ export class SubmissoesService {
     if (!anexo || anexo.submissaoId !== id) {
       throw new NotFoundException('Anexo não encontrado nesta submissão.');
     }
+    // Ordem importa pela FK: remove primeiro a linha Anexo (filha), depois o
+    // blob + a linha Arquivo (pai, em storage.deletar). Se o delete do blob
+    // falhar, sobra no máximo um blob órfão (coletável depois) — sem inconsistência.
     await this.repo.removerAnexo(anexoId);
     await this.storage.deletar(anexo.arquivo.chave);
   }
@@ -466,7 +472,7 @@ export class SubmissoesService {
       autorId,
     );
 
-    this.emitirStatus(sub.municipioId, sub.competenciaId, this.statusMapa(novoStatus));
+    this.invalidarCachePainel(sub.competenciaId);
 
     if (acao === 'SOLICITOU_CORRECAO') this.notificar('correcao_solicitada', atualizado, comentario);
     if (acao === 'APROVOU') this.notificar('submissao_aprovada', atualizado);
@@ -474,20 +480,12 @@ export class SubmissoesService {
     return atualizado;
   }
 
-  private statusMapa(status: SubmissaoStatus): StatusMapa {
-    if (status === SubmissaoStatus.RASCUNHO || status === SubmissaoStatus.EM_PREENCHIMENTO) {
-      return 'EM_PREENCHIMENTO';
-    }
-    return 'RESPONDIDO';
-  }
-
-  private emitirStatus(municipioId: number, competenciaId: string, status: StatusMapa, protocolo?: string) {
-    // Invalida o cache do painel desta competência (status/stats) — o próximo
-    // request recalcula com os dados atualizados.
-    void this.redis.cacheDelPorPrefixo(prefixoCachePainel(competenciaId));
-    this.realtime.emitirStatusUpdate({ municipioId, competenciaId, status, protocolo });
-    // Broadcast de stats com throttle (no máx. 1 a cada 3s por competência).
-    this.realtime.agendarBroadcastStats(competenciaId);
+  /**
+   * Invalida o cache do painel desta competência (status/stats). O próximo
+   * request do painel (via polling) recalcula com os dados atualizados.
+   */
+  private invalidarCachePainel(competenciaId: string) {
+    void this.cache.cacheDelPorPrefixo(prefixoCachePainel(competenciaId));
   }
 
   private notificar(
@@ -509,6 +507,29 @@ export class SubmissoesService {
     if (usuario.escopo === 'MUNICIPAL') {
       if (sub.municipioId !== usuario.municipioId && sub.autorId !== usuario.sub) {
         throw new ForbiddenException('Acesso negado a esta submissão.');
+      }
+    }
+    // Escopo REGIONAL é verificado nos pontos que carregam o município
+    // (validarMunicipioNoEscopo). Para leitura por ID, o where da listagem
+    // já restringe; aqui o autor sempre acessa a própria submissão.
+  }
+
+  /**
+   * Garante que o usuário pode operar sobre o município alvo (escrita).
+   * MUNICIPAL: só o próprio município. REGIONAL: só municípios da sua regional.
+   * Demais escopos (estaduais): sem restrição.
+   */
+  private async validarMunicipioNoEscopo(municipioId: number, usuario: JwtPayload): Promise<void> {
+    if (usuario.escopo === 'MUNICIPAL') {
+      if (municipioId !== usuario.municipioId) {
+        throw new ForbiddenException('Você só pode criar submissões para o seu próprio município.');
+      }
+      return;
+    }
+    if (usuario.escopo === 'REGIONAL') {
+      const regionalDoMunicipio = await this.repo.buscarRegionalDoMunicipio(municipioId);
+      if (!regionalDoMunicipio || regionalDoMunicipio !== usuario.regionalId) {
+        throw new ForbiddenException('Você só pode criar submissões para municípios da sua regional.');
       }
     }
   }

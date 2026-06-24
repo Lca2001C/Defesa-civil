@@ -7,8 +7,6 @@ export interface RuntimeConfig {
   appEnv: string;
   /** Caminho base RELATIVO da API. Padrao: "/api". */
   apiBaseUrl: string;
-  /** Caminho do WebSocket (socket.io). Padrao: "/socket.io". */
-  socketPath: string;
 }
 
 function lerEnv(): RuntimeEnv {
@@ -23,5 +21,4 @@ const env = lerEnv();
 export const runtimeConfig: RuntimeConfig = {
   appEnv: env.APP_ENV ?? "development",
   apiBaseUrl: env.API_BASE_URL ?? "/api",
-  socketPath: env.SOCKET_PATH ?? "/socket.io",
 };

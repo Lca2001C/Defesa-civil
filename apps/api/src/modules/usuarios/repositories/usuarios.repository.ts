@@ -192,6 +192,11 @@ export class UsuariosRepository {
     await this.prisma.usuario.update({ where: { id }, data: { senhaHash } });
   }
 
+  /** Invalida a sessão ativa do usuário (remove o refresh token persistido). */
+  async invalidarSessoes(id: string): Promise<void> {
+    await this.prisma.refreshToken.deleteMany({ where: { usuarioId: id } });
+  }
+
   async remover(id: string): Promise<void> {
     await this.prisma.usuario.delete({ where: { id } });
   }

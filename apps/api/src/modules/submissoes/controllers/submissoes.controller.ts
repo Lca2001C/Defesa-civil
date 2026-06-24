@@ -28,12 +28,7 @@ import { extrairIp } from '../../../shared/utils/format.util';
 import { MAX_LEGACY_UPLOAD_BYTES } from '../../../shared/constants';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import { FiltroSubmissaoDto } from '../dtos/filtro-submissao.dto';
-import {
-  IniciarMultipartDto,
-  AssinarParteDto,
-  CompletarMultipartDto,
-  AbortarMultipartDto,
-} from '../dtos/anexo-multipart.dto';
+import { IniciarAnexoDto, CompletarAnexoDto } from '../dtos/anexo-multipart.dto';
 
 @ApiTags('Submissões')
 @Controller('submissoes')
@@ -192,13 +187,13 @@ export class SubmissoesController {
   @UseInterceptors(
     FileInterceptor('arquivo', {
       storage: memoryStorage(),
-      // Caminho legado (modo local/dev): cap em memória para evitar OOM.
-      // Anexos grandes (até 50 GB) usam o fluxo multipart direto ao R2.
+      // Caminho local/dev: cap em memória para evitar OOM. Em produção (Azure)
+      // o upload vai direto ao Blob via SAS (endpoints /anexos/iniciar+completar).
       limits: { fileSize: MAX_LEGACY_UPLOAD_BYTES },
     }),
   )
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Anexa um arquivo via servidor (modo local/dev). Para arquivos grandes, use o fluxo multipart.' })
+  @ApiOperation({ summary: 'Anexa um arquivo via servidor (modo local/dev). Em produção, use /anexos/iniciar + Blob SAS.' })
   adicionarAnexo(
     @Param('id') id: string,
     @UploadedFile() arquivo: Express.Multer.File,
@@ -208,59 +203,35 @@ export class SubmissoesController {
     return this.service.adicionarAnexo(id, arquivo, usuario, perguntaCodigo);
   }
 
-  // ── Upload multipart direto ao R2 (anexos grandes, até 50 GB) ──────────────
+  // ── Upload direto ao Azure Blob (SAS, PUT único) ───────────────────────────
 
-  @Post(':id/anexos/multipart/iniciar')
+  @Post(':id/anexos/iniciar')
   @HttpCode(HttpStatus.OK)
   @Permissao('submissoes.editar')
-  @ApiOperation({ summary: 'Inicia um upload multipart (retorna chave/uploadId ou modo local).' })
-  iniciarMultipart(
+  @ApiOperation({ summary: 'Inicia o upload de anexo (retorna URL SAS de escrita + chave, ou modo local).' })
+  iniciarAnexo(
     @Param('id') id: string,
-    @Body() dto: IniciarMultipartDto,
+    @Body() dto: IniciarAnexoDto,
     @UsuarioAtual() usuario: JwtPayload,
   ) {
-    return this.service.iniciarAnexoMultipart(id, dto, usuario);
+    return this.service.iniciarAnexo(id, dto, usuario);
   }
 
-  @Post(':id/anexos/multipart/assinar-parte')
-  @HttpCode(HttpStatus.OK)
-  @Permissao('submissoes.editar')
-  @ApiOperation({ summary: 'Retorna a URL assinada (PUT) para enviar uma parte direto ao R2.' })
-  assinarParte(
-    @Param('id') id: string,
-    @Body() dto: AssinarParteDto,
-    @UsuarioAtual() usuario: JwtPayload,
-  ) {
-    return this.service.assinarParteAnexo(id, dto, usuario);
-  }
-
-  @Post(':id/anexos/multipart/completar')
+  @Post(':id/anexos/completar')
   @HttpCode(HttpStatus.CREATED)
   @Permissao('submissoes.editar')
-  @ApiOperation({ summary: 'Conclui o upload multipart e registra o anexo.' })
-  completarMultipart(
+  @ApiOperation({ summary: 'Conclui o upload (após o PUT no Blob) e registra o anexo.' })
+  completarAnexo(
     @Param('id') id: string,
-    @Body() dto: CompletarMultipartDto,
+    @Body() dto: CompletarAnexoDto,
     @UsuarioAtual() usuario: JwtPayload,
   ) {
-    return this.service.completarAnexoMultipart(id, dto, usuario);
-  }
-
-  @Post(':id/anexos/multipart/abortar')
-  @HttpCode(HttpStatus.OK)
-  @Permissao('submissoes.editar')
-  @ApiOperation({ summary: 'Aborta um upload multipart (cancelamento/erro).' })
-  abortarMultipart(
-    @Param('id') id: string,
-    @Body() dto: AbortarMultipartDto,
-    @UsuarioAtual() usuario: JwtPayload,
-  ) {
-    return this.service.abortarAnexoMultipart(id, dto, usuario);
+    return this.service.completarAnexo(id, dto, usuario);
   }
 
   @Get(':id/anexos/:anexoId/url')
   @Permissao('submissoes.criar')
-  @ApiOperation({ summary: 'Retorna a URL assinada de download (GET) do anexo, direto do R2.' })
+  @ApiOperation({ summary: 'Retorna a URL SAS de download do anexo, direto do Blob.' })
   urlDownloadAnexo(
     @Param('id') id: string,
     @Param('anexoId') anexoId: string,

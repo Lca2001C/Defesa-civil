@@ -76,15 +76,21 @@ export class DashboardService {
   // ── por regional ───────────────────────────────────────────────────────────
 
   async buscarPorRegional(competenciaId: string, usuario: JwtPayload) {
-    const submissoes = await this.repo.listarParaRegional(competenciaId, this.escopoDe(usuario));
+    const { grupos, municipios } = await this.repo.agruparPorRegional(
+      competenciaId,
+      this.escopoDe(usuario),
+    );
+    const regionalDoMunicipio = new Map(municipios.map((m) => [m.id, m.regional]));
 
     const mapa = new Map<string, { nome: string; total: number; aprovadas: number }>();
-    for (const s of submissoes) {
-      const id = s.municipio.regional?.id ?? '__sem_regional__';
-      const nome = s.municipio.regional?.nome ?? 'Sem regional';
+    for (const g of grupos) {
+      const regional = regionalDoMunicipio.get(g.municipioId);
+      const id = regional?.id ?? '__sem_regional__';
+      const nome = regional?.nome ?? 'Sem regional';
+      const qtd = g._count._all;
       const atual = mapa.get(id) ?? { nome, total: 0, aprovadas: 0 };
-      atual.total++;
-      if (s.status === SubmissaoStatus.APROVADO) atual.aprovadas++;
+      atual.total += qtd;
+      if (g.status === SubmissaoStatus.APROVADO) atual.aprovadas += qtd;
       mapa.set(id, atual);
     }
 
@@ -96,14 +102,20 @@ export class DashboardService {
   // ── por formulário ─────────────────────────────────────────────────────────
 
   async buscarPorFormulario(competenciaId: string, usuario: JwtPayload) {
-    const submissoes = await this.repo.listarParaFormulario(competenciaId, this.escopoDe(usuario));
+    const { grupos, versoes } = await this.repo.agruparPorFormulario(
+      competenciaId,
+      this.escopoDe(usuario),
+    );
+    const versaoPorId = new Map(versoes.map((v) => [v.id, v]));
 
     const mapa = new Map<
       string,
       { formularioId: string; nome: string; versao: number; total: number; aprovadas: number }
     >();
-    for (const s of submissoes) {
-      const fv = s.formularioVersao;
+    for (const g of grupos) {
+      const fv = versaoPorId.get(g.formularioVersaoId);
+      if (!fv) continue;
+      const qtd = g._count._all;
       const atual = mapa.get(fv.id) ?? {
         formularioId: fv.formulario.id,
         nome: fv.formulario.nome,
@@ -111,8 +123,8 @@ export class DashboardService {
         total: 0,
         aprovadas: 0,
       };
-      atual.total++;
-      if (s.status === SubmissaoStatus.APROVADO) atual.aprovadas++;
+      atual.total += qtd;
+      if (g.status === SubmissaoStatus.APROVADO) atual.aprovadas += qtd;
       mapa.set(fv.id, atual);
     }
 

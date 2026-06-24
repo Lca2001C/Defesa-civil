@@ -8,7 +8,6 @@ import {
   Matches,
   MaxLength,
   MinLength,
-  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -35,9 +34,10 @@ export class RegistrarDto {
   @MaxLength(128)
   senha!: string;
 
+  // A igualdade com `senha` é validada no AuthService.registrar (mensagem clara).
   @ApiProperty({ description: 'Deve ser idêntica ao campo senha.' })
+  @IsNotEmpty()
   @IsString()
-  @ValidateIf((o: RegistrarDto) => o.confirmarSenha !== o.senha)
   confirmarSenha!: string;
 
   @ApiPropertyOptional({ description: 'Código IBGE do município (obrigatório para operador municipal).' })

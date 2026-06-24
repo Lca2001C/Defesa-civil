@@ -24,7 +24,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { uploadAnexo } from "../../lib/uploadR2";
+import { uploadAnexo } from "../../lib/uploadAnexo";
 import { DynamicForm } from "../../components/dynamic-form";
 import type { ArquivoUploadado } from "../../components/dynamic-form/types";
 import { ACCEPT_TIPOS } from "../../shared/constants";

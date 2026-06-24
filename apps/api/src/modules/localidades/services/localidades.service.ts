@@ -3,7 +3,7 @@
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { RedisService } from '../../../infra/redis/redis.service';
+import { CacheService } from '../../../infra/cache/cache.service';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import type { PaginacaoDto } from '../../../common/dto/paginacao.dto';
 import type { AtualizarCompdecDto } from '../dtos/atualizar-compdec.dto';
@@ -16,7 +16,7 @@ const CACHE_TTL_SEG = 3600;
 export class LocalidadesService {
   constructor(
     private readonly repo: LocalidadesRepository,
-    private readonly redis: RedisService,
+    private readonly cache: CacheService,
   ) {}
 
   // ── Municípios ─────────────────────────────────────────────────────────────
@@ -26,11 +26,11 @@ export class LocalidadesService {
    * Usada no seletor de município ao criar submissão. Cacheada (muda raramente).
    */
   async listarTodosMunicipios(): Promise<{ id: number; nome: string }[]> {
-    const cacheado = await this.redis.cacheGet<{ id: number; nome: string }[]>(CACHE_MUNICIPIOS_MG);
+    const cacheado = await this.cache.cacheGet<{ id: number; nome: string }[]>(CACHE_MUNICIPIOS_MG);
     if (cacheado) return cacheado;
 
     const municipios = await this.repo.listarTodosMunicipiosMg();
-    await this.redis.cacheSet(CACHE_MUNICIPIOS_MG, municipios, CACHE_TTL_SEG);
+    await this.cache.cacheSet(CACHE_MUNICIPIOS_MG, municipios, CACHE_TTL_SEG);
     return municipios;
   }
 

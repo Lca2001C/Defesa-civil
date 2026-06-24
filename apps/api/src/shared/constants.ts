@@ -22,10 +22,10 @@ export const PERMISSION_LEVEL = {
 export const EXPORT_BATCH_SIZE = 5000;
 
 /**
- * Limite do upload legado em memória (modo local/dev). Anexos grandes usam o
- * fluxo multipart direto ao R2.
+ * Limite do upload legado em memória (modo local/dev). Em produção os anexos
+ * sobem direto ao Azure Blob via SAS (sem passar pelo servidor).
  */
 export const MAX_LEGACY_UPLOAD_BYTES = 200 * 1024 * 1024;
 
-/** Prefixo das chaves de rate limit no Redis. */
-export const REDIS_RATE_LIMIT_PREFIX = 'rl:';
+/** Prefixo das chaves de rate limit no cache. */
+export const RATE_LIMIT_PREFIX = 'rl:';

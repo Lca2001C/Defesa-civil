@@ -7,5 +7,4 @@
 window.__ENV__ = {
   APP_ENV: "development",
   API_BASE_URL: "/api",
-  SOCKET_PATH: "/socket.io",
 };

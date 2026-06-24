@@ -55,6 +55,12 @@ export class SubmissoesRepository {
     return m?.nome ?? null;
   }
 
+  /** regionalId do município (para checagem de escopo REGIONAL). null se não existir. */
+  async buscarRegionalDoMunicipio(id: number): Promise<string | null | undefined> {
+    const m = await this.prisma.municipio.findUnique({ where: { id }, select: { regionalId: true } });
+    return m?.regionalId;
+  }
+
   perguntasAutomaticas(versaoId: string) {
     return this.prisma.pergunta.findMany({
       where: { secao: { pagina: { versaoId } }, tipo: TipoPergunta.AUTOMATICO },
@@ -329,15 +335,22 @@ export class SubmissoesRepository {
     });
     const mapa = new Map(perguntas.map((p) => [p.codigo, p.id]));
 
-    for (const [codigo, valor] of Object.entries(dados)) {
-      const perguntaId = mapa.get(codigo);
-      if (!perguntaId) continue;
-      const valorJson = (valor ?? Prisma.JsonNull) as Prisma.InputJsonValue;
-      await tx.resposta.upsert({
-        where: { submissaoId_perguntaId: { submissaoId, perguntaId } },
-        create: { submissaoId, perguntaId, perguntaCodigo: codigo, valor: valorJson },
-        update: { valor: valorJson },
-      });
-    }
+    // Apenas as perguntas informadas (preserva as demais respostas).
+    const rows = Object.entries(dados)
+      .filter(([codigo]) => mapa.has(codigo))
+      .map(([codigo, valor]) => ({
+        submissaoId,
+        perguntaId: mapa.get(codigo)!,
+        perguntaCodigo: codigo,
+        valor: (valor ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+      }));
+    if (rows.length === 0) return;
+
+    // 2 queries em vez de N upserts sequenciais: remove só as chaves informadas
+    // e recria-as. Importante numa B2 com banco remoto (latência por round-trip).
+    await tx.resposta.deleteMany({
+      where: { submissaoId, perguntaId: { in: rows.map((r) => r.perguntaId) } },
+    });
+    await tx.resposta.createMany({ data: rows });
   }
 }

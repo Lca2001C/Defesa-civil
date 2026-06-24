@@ -1,15 +1,11 @@
-import {
-  IsArray,
-  IsInt,
-  IsOptional,
-  IsString,
-  MaxLength,
-  Min,
-  ValidateNested,
-} from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class IniciarMultipartDto {
+// Upload de anexo em duas etapas (Azure Blob via SAS, PUT único):
+//  1) iniciar  → backend valida e devolve a URL SAS de escrita + chave;
+//  2) completar → após o PUT direto no Blob, registra o anexo no banco.
+
+export class IniciarAnexoDto {
   @IsString()
   @MaxLength(255)
   nomeOriginal!: string;
@@ -29,35 +25,9 @@ export class IniciarMultipartDto {
   perguntaCodigo?: string;
 }
 
-export class AssinarParteDto {
+export class CompletarAnexoDto {
   @IsString()
   chave!: string;
-
-  @IsString()
-  uploadId!: string;
-
-  @IsInt()
-  @Min(1)
-  @Type(() => Number)
-  numeroParte!: number;
-}
-
-export class ParteConcluidaDto {
-  @IsInt()
-  @Min(1)
-  @Type(() => Number)
-  numero!: number;
-
-  @IsString()
-  etag!: string;
-}
-
-export class CompletarMultipartDto {
-  @IsString()
-  chave!: string;
-
-  @IsString()
-  uploadId!: string;
 
   @IsString()
   @MaxLength(255)
@@ -76,17 +46,4 @@ export class CompletarMultipartDto {
   @IsOptional()
   @IsString()
   perguntaCodigo?: string;
-
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ParteConcluidaDto)
-  partes!: ParteConcluidaDto[];
-}
-
-export class AbortarMultipartDto {
-  @IsString()
-  chave!: string;
-
-  @IsString()
-  uploadId!: string;
 }

@@ -31,8 +31,3 @@ export interface PorFormulario {
   total: number;
   aprovadas: number;
 }
-
-export interface ExportJobEstado {
-  estado: string;
-  progresso: number;
-}

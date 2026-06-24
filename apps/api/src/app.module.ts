@@ -1,11 +1,9 @@
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { BullModule } from '@nestjs/bullmq';
+import { ConfigModule } from '@nestjs/config';
 import { validate } from './config/env.validation';
-import type { Env } from './config/env.validation';
 import { PrismaModule } from './infra/prisma/prisma.module';
-import { RedisModule } from './infra/redis/redis.module';
+import { CacheModule } from './infra/cache/cache.module';
 import { StorageModule } from './infra/storage/storage.module';
 import { HttpLoggerMiddleware } from './infra/middleware/http-logger.middleware';
 import { HealthModule } from './modules/health/health.module';
@@ -14,7 +12,6 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CompetenciasModule } from './modules/competencias/competencias.module';
 import { FormulariosModule } from './modules/formularios/formularios.module';
 import { SubmissoesModule } from './modules/submissoes/submissoes.module';
-import { RealtimeModule } from './modules/realtime/realtime.module';
 import { PainelModule } from './modules/painel/painel.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { RelatoriosModule } from './modules/relatorios/relatorios.module';
@@ -46,14 +43,8 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
       envFilePath: ['../../.env', '.env'],
       validate,
     }),
-    BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService<Env, true>) => ({
-        connection: { url: config.get('REDIS_URL', { infer: true }) },
-      }),
-    }),
     PrismaModule,
-    RedisModule,
+    CacheModule,
     StorageModule,
     HealthModule,
     CommonModule,
@@ -61,7 +52,6 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     CompetenciasModule,
     FormulariosModule,
     SubmissoesModule,
-    RealtimeModule,
     PainelModule,
     DashboardModule,
     RelatoriosModule,

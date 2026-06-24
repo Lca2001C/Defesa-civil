@@ -30,7 +30,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { uploadAnexo } from "../../lib/uploadR2";
+import { uploadAnexo } from "../../lib/uploadAnexo";
 import { useAuth } from "../../lib/auth-context";
 import { ACCEPT_TIPOS } from "../../shared/constants";
 import { SubmissoesService } from "./services/submissoes.service";

@@ -34,27 +34,6 @@ services:
       - dcmg
 
   # ---------------------------------------------------------------------------
-  # Cache / fila / adaptador WebSocket (Redis)
-  # ---------------------------------------------------------------------------
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
-    # Publicar a porta apenas em DEV. Em producao e removida pelo override.
-    ports:
-      - "6379:6379"
-    healthcheck:
-      # redis-cli ping deve responder PONG quando o servico esta saudavel.
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
-    networks:
-      - dcmg
-
-  # ---------------------------------------------------------------------------
   # API (NestJS) — escuta na porta 4000, prefixo global /api
   # ---------------------------------------------------------------------------
   api:
@@ -68,11 +47,8 @@ services:
       # Override do DSN para a rede interna do Docker (precedencia sobre env_file).
       # Mantem o .env com localhost para o Prisma rodando no host (migrations).
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
-      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     volumes:
       # Persistencia dos uploads quando STORAGE_DRIVER=local.
@@ -101,7 +77,6 @@ services:
       # Variaveis injetadas no /env.js em tempo de boot (runtime config).
       APP_ENV: ${APP_ENV}
       API_BASE_URL: /api
-      SOCKET_PATH: /socket.io
     depends_on:
       - api
     # A porta do host vem da variavel NGINX_HTTP_PORT (padrao 8080), mapeada
@@ -111,36 +86,8 @@ services:
     networks:
       - dcmg
 
-  # ---------------------------------------------------------------------------
-  # Ngrok (tunel publico opcional) — ativado pelo profile "tunnel"
-  #   docker compose --profile tunnel up ngrok
-  # ---------------------------------------------------------------------------
-  ngrok:
-    # Imagem buildada localmente (sem pull do Docker Hub): base Alpine em cache
-    # + binario do ngrok baixado pelo host. O authtoken vem do env.
-    build:
-      context: .
-      dockerfile: infra/docker/ngrok.Dockerfile
-    restart: unless-stopped
-    profiles:
-      - tunnel
-    command: ["start", "--all", "--config", "/etc/ngrok/ngrok.yml"]
-    environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
-    volumes:
-      - ./infra/ngrok/ngrok.yml:/etc/ngrok/ngrok.yml:ro
-    # Alvo do tunel = app no host (Vite :3000). Garante a resolucao do host.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    # Publica o inspector (Web UI / API local) para o script ler a URL publica.
-    ports:
-      - "${NGROK_INSPECTOR_PORT:-4040}:4040"
-    networks:
-      - dcmg
-
 volumes:
   pg_data:
-  redis_data:
   uploads:
 
 networks:

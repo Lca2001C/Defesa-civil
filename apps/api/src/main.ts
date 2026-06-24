@@ -8,7 +8,6 @@ import compression from 'compression';
 import { AppModule } from './app.module';
 import type { Env } from './config/env.validation';
 import { PrismaService } from './infra/prisma/prisma.service';
-import { WsRedisAdapter } from './infra/realtime/ws-redis.adapter';
 import { resolverOrigensCors } from './shared/cors.util';
 
 /**
@@ -34,6 +33,11 @@ async function bootstrap(): Promise<void> {
   const porta = config.get('PORT', { infer: true });
   const prefixo = config.get('API_PREFIX', { infer: true });
 
+  // Confia em UM proxy reverso à frente (o Nginx na mesma VM): faz o Express
+  // derivar req.ip do X-Forwarded-For de forma confiável. Sem isto, o cabeçalho
+  // seria spoofável e burlaria rate limit / lockout por IP.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   // Seguranca de cabecalhos HTTP + CSP conservadora (compatível com a SPA
   // MUI/Emotion, que usa estilos inline). `connect-src` libera self + WS/WSS
   // para o painel em tempo real.
@@ -47,7 +51,8 @@ async function bootstrap(): Promise<void> {
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", 'data:', 'blob:'],
           fontSrc: ["'self'", 'data:'],
-          connectSrc: ["'self'", 'ws:', 'wss:'],
+          // connect-src: self + Azure Blob (upload/download direto via SAS).
+          connectSrc: ["'self'", 'https://*.blob.core.windows.net'],
           objectSrc: ["'none'"],
           frameAncestors: ["'self'"],
           baseUri: ["'self'"],
@@ -84,14 +89,6 @@ async function bootstrap(): Promise<void> {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
-
-  // WebSocket adapter (com Redis se WS_REDIS_ADAPTER=true)
-  const wsAdapter = new WsRedisAdapter(app);
-  if (config.get('WS_REDIS_ADAPTER', { infer: true })) {
-    const redisUrl = config.get('REDIS_URL', { infer: true });
-    await wsAdapter.conectarRedis(redisUrl);
-  }
-  app.useWebSocketAdapter(wsAdapter);
 
   // Encerramento gracioso da conexao com o banco.
   app.enableShutdownHooks();

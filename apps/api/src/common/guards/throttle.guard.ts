@@ -8,20 +8,18 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import type { Env } from '../../config/env.validation';
-import { RedisService } from '../../infra/redis/redis.service';
+import { CacheService } from '../../infra/cache/cache.service';
 import { extrairIp } from '../../shared/utils/format.util';
-import { REDIS_RATE_LIMIT_PREFIX } from '../../shared/constants';
+import { RATE_LIMIT_PREFIX } from '../../shared/constants';
 
 /**
- * Guard de rate limiting por IP usando Redis (janela fixa).
+ * Guard de rate limiting por IP usando o cache em memória (janela fixa).
  *
- * Algoritmo: INCR na chave `rl:{ip}:{janela}` + EXPIRE no primeiro hit.
- * Janela = floor(timestamp_segundos / TTL) — garante que o contador
- * reseta exatamente a cada TTL segundos, sem drift.
+ * Algoritmo: incr na chave `rl:{ip}:{janela}` com TTL = 2*janela; a janela =
+ * floor(timestamp_segundos / TTL) garante reset a cada TTL segundos sem drift.
  *
- * Retorna 429 com headers padrão (X-RateLimit-*) quando o limite é excedido.
- * Endpoints marcados com @Publico() também passam pelo guard, mas rotas
- * de health e métricas devem ser excluídas via allowList abaixo.
+ * Instância única: contador em memória basta. Em caso de múltiplas réplicas no
+ * futuro, voltar a uma store compartilhada.
  */
 @Injectable()
 export class ThrottleGuard implements CanActivate {
@@ -31,7 +29,7 @@ export class ThrottleGuard implements CanActivate {
   private static readonly ALLOW_LIST = ['/health', '/health/ready'];
 
   constructor(
-    private readonly redis: RedisService,
+    private readonly cache: CacheService,
     private readonly config: ConfigService<Env, true>,
   ) {
     this.ttl = this.config.get('RATE_LIMIT_TTL', { infer: true });
@@ -53,13 +51,9 @@ export class ThrottleGuard implements CanActivate {
     const ip = extrairIp(req);
 
     const janela = Math.floor(Date.now() / 1000 / this.ttl);
-    const chave = `${REDIS_RATE_LIMIT_PREFIX}${ip}:${janela}`;
-    const client = this.redis.getClient();
+    const chave = `${RATE_LIMIT_PREFIX}${ip}:${janela}`;
 
-    const pipeline = client.pipeline();
-    pipeline.incr(chave);
-    pipeline.expire(chave, this.ttl * 2);
-    const [[, contagem]] = (await pipeline.exec()) as [[null, number], unknown];
+    const contagem = await this.cache.incr(chave, this.ttl * 2);
 
     const restante = Math.max(0, this.limite - contagem);
     res.setHeader('X-RateLimit-Limit', this.limite);

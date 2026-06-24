@@ -8,7 +8,6 @@ import { mascaraCpf } from '../../../shared/utils/format.util';
 import { hashSenha } from '../../../shared/hash.util';
 import { PERMISSION_LEVEL } from '../../../shared/constants';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
-import { RedisService } from '../../../infra/redis/redis.service';
 import { UsuariosRepository } from '../repositories/usuarios.repository';
 import type { CriarUsuarioDto } from '../dtos/criar-usuario.dto';
 import type { AtualizarUsuarioDto } from '../dtos/atualizar-usuario.dto';
@@ -21,10 +20,7 @@ import type { AtualizarUsuarioDto } from '../dtos/atualizar-usuario.dto';
  */
 @Injectable()
 export class UsuariosService {
-  constructor(
-    private readonly repo: UsuariosRepository,
-    private readonly redis: RedisService,
-  ) {}
+  constructor(private readonly repo: UsuariosRepository) {}
 
   async buscarMeusDados(usuarioId: string) {
     const usuario = await this.repo.buscarCadastroLgpd(usuarioId);
@@ -143,7 +139,7 @@ export class UsuariosService {
 
     // Segurança: invalida as sessões ativas do usuário (logout global) após a
     // troca de senha — paridade com o fluxo de redefinição por token.
-    await this.redis.getClient().del(`refresh:${id}`);
+    await this.repo.invalidarSessoes(id);
 
     return { mensagem: 'Senha redefinida com sucesso.' };
   }

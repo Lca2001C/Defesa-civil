@@ -1,0 +1,66 @@
+name: Deploy (Azure VM)
+
+# Entrega contínua para a VM B2 da Azure (docker compose prod).
+# Dispara no push para main (após o merge) e manualmente (workflow_dispatch).
+#
+# Requer estes secrets no repositório (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST     IP/host da VM
+#   DEPLOY_USER     usuário SSH (ex.: azureuser)
+#   DEPLOY_SSH_KEY  chave PRIVADA SSH (conteúdo do arquivo)
+#   DEPLOY_PORT     (opcional) porta SSH; padrão 22
+#   DEPLOY_PATH     (opcional) caminho do repo na VM; padrão $HOME/dcmg
+#
+# Sem os secrets, o job é PULADO (não falha) — o CI continua verde.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy via SSH
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Verificar secrets de deploy
+        id: guard
+        run: |
+          if [ -n "${{ secrets.DEPLOY_HOST }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Secrets de deploy ausentes (DEPLOY_HOST). Pulando o deploy."
+          fi
+
+      - name: Deploy na VM (git pull + docker compose + migrate)
+        if: steps.guard.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          command_timeout: 25m
+          envs: DEPLOY_PATH
+          script: |
+            set -e
+            cd "${DEPLOY_PATH:-$HOME/dcmg}"
+            echo "==> Atualizando código (branch main)"
+            git fetch --all --prune
+            git checkout main
+            git pull --ff-only
+            echo "==> Build + subida dos containers"
+            docker compose -f docker-compose.prod.yml up -d --build
+            echo "==> Aplicando migrations Prisma"
+            docker compose -f docker-compose.prod.yml exec -T -w /app/apps/api api \
+              /app/node_modules/.bin/prisma migrate deploy
+            echo "==> Limpeza de imagens antigas"
+            docker image prune -f
+            docker compose -f docker-compose.prod.yml ps
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

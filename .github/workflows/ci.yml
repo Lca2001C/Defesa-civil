@@ -1,0 +1,94 @@
+name: CI
+
+# Integração contínua do monorepo (api + web + contracts).
+# Roda em PRs e em push para main/dev: gera o Prisma Client, builda os contratos,
+# faz typecheck, roda os testes e builda tudo. Também valida os Dockerfiles.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+# Cancela execuções antigas do mesmo ref quando um novo push chega.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint de tipos + testes + build (Node/pnpm)
+  # ---------------------------------------------------------------------------
+  build-test:
+    name: Typecheck • Test • Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4 # versão vem do campo packageManager
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      # O Prisma Client precisa ser gerado antes do typecheck/build da API.
+      - name: Gerar Prisma Client
+        run: pnpm --filter @dcmg/api exec prisma generate
+
+      # A API resolve @dcmg/contracts pelo dist (types) — buildar antes.
+      - name: Validar schema Prisma
+        run: pnpm --filter @dcmg/api exec prisma validate
+
+      - name: Build dos contratos
+        run: pnpm --filter @dcmg/contracts run build
+
+      - name: Typecheck (api • web • contracts)
+        run: pnpm -r typecheck
+
+      - name: Testes (api)
+        run: pnpm --filter @dcmg/api test
+
+      - name: Build (contracts • api • web)
+        run: pnpm -r build
+
+  # ---------------------------------------------------------------------------
+  # Build das imagens Docker (sem push) — valida os Dockerfiles de prod.
+  # ---------------------------------------------------------------------------
+  docker-build:
+    name: Build imagens Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build imagem da API
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          push: false
+          tags: dcmg-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build imagem do Web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/web.Dockerfile
+          push: false
+          tags: dcmg-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max

@@ -6,7 +6,6 @@
 interface RuntimeEnv {
   APP_ENV?: string;
   API_BASE_URL?: string;
-  SOCKET_PATH?: string;
 }
 
 interface Window {

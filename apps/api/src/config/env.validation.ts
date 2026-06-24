@@ -9,19 +9,6 @@ import { z } from 'zod';
  * impedindo o boot da aplicacao com configuracao invalida.
  */
 
-/** Converte uma string "true"/"false" em boolean (com valor padrao). */
-const booleanFromString = (padrao: boolean) =>
-  z
-    .preprocess(
-      // String vazia (ex.: S3_FORCE_PATH_STYLE= no .env) ou ausente usa o padrao.
-      (valor) => (valor === '' || valor === undefined ? padrao : valor),
-      z.union([z.boolean(), z.enum(['true', 'false', '1', '0'])]),
-    )
-    .transform((valor) => {
-      if (typeof valor === 'boolean') return valor;
-      return valor === 'true' || valor === '1';
-    });
-
 /** Numero inteiro positivo a partir de string. */
 const intFromString = (padrao: number) =>
   z.coerce.number().int().positive().default(padrao);
@@ -45,9 +32,6 @@ export const envSchema = z
   POSTGRES_PASSWORD: z.string().min(1),
   POSTGRES_DB: z.string().min(1),
 
-  // --- Redis ---
-  REDIS_URL: z.string().min(1),
-
   // --- JWT ---
   JWT_ACCESS_SECRET: z.string().min(1),
   JWT_REFRESH_SECRET: z.string().min(1),
@@ -55,26 +39,28 @@ export const envSchema = z
   JWT_REFRESH_TTL: z.string().min(1).default('7d'),
 
   // --- Armazenamento de arquivos ---
-  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  STORAGE_DRIVER: z.enum(['local', 'azure']).default('local'),
   STORAGE_LOCAL_PATH: z.string().min(1).default('/data/uploads'),
-  // Configuracao S3 fica vazia na Fase 1.
-  S3_ENDPOINT: z.string().default(''),
-  S3_BUCKET: z.string().default(''),
-  S3_REGION: z.string().default(''),
-  S3_ACCESS_KEY: z.string().default(''),
-  S3_SECRET_KEY: z.string().default(''),
-  S3_FORCE_PATH_STYLE: booleanFromString(false),
+  // Azure Blob Storage (usado quando STORAGE_DRIVER=azure).
+  AZURE_STORAGE_CONNECTION_STRING: z.string().default(''),
+  AZURE_STORAGE_CONTAINER: z.string().default('anexos'),
 
   // --- Limites e infraestrutura ---
-  // Limite de upload de anexos em MB (default 50 GB = 51200 MB).
-  MAX_UPLOAD_MB: intFromString(51200),
-  WS_REDIS_ADAPTER: booleanFromString(true),
+  // Limite de upload de anexos em MB.
+  MAX_UPLOAD_MB: intFromString(50),
   RATE_LIMIT_TTL: intFromString(60),
   RATE_LIMIT_LIMIT: intFromString(120),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
   NGINX_HTTP_PORT: intFromString(8080),
+
+  // --- SMTP (opcional — notificações e recuperação de senha por e-mail) ---
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: intFromString(587),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  SMTP_FROM: z.string().default('"Defesa Civil MG" <noreply@defesacivil.mg.gov.br>'),
   })
   // Endurecimento adicional exigido SOMENTE em produção.
   .superRefine((cfg, ctx) => {

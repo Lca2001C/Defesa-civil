@@ -7,14 +7,12 @@ import {
 } from '@nestjs/terminus';
 import { Publico } from '../../../common/decorators/publico.decorator';
 import { PrismaHealthIndicator } from '../prisma.health';
-import { RedisHealthIndicator } from '../redis.health';
 
 /**
  * Controller de health-check da API.
  *
  * - GET /health        -> liveness: a aplicacao esta de pe (resposta simples).
- * - GET /health/ready  -> readiness: dependencias criticas (PostgreSQL e Redis)
- *                         estao acessiveis.
+ * - GET /health/ready  -> readiness: dependencia critica (PostgreSQL) acessivel.
  *
  * O prefixo global "api" e aplicado em main.ts, entao as rotas finais sao
  * /api/health e /api/health/ready.
@@ -26,7 +24,6 @@ export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
     private readonly prismaIndicator: PrismaHealthIndicator,
-    private readonly redisIndicator: RedisHealthIndicator,
   ) {}
 
   /** Liveness: indica apenas que o processo esta respondendo. */
@@ -35,13 +32,12 @@ export class HealthController {
     return { status: 'ok', timestamp: new Date().toISOString() };
   }
 
-  /** Readiness: verifica PostgreSQL (SELECT 1) e Redis (ping). */
+  /** Readiness: verifica PostgreSQL (SELECT 1). */
   @Get('ready')
   @HealthCheck()
   readiness(): Promise<HealthCheckResult> {
     return this.health.check([
       () => this.prismaIndicator.isHealthy('postgres'),
-      () => this.redisIndicator.isHealthy('redis'),
     ]);
   }
 }

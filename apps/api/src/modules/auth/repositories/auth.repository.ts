@@ -183,4 +183,31 @@ export class AuthRepository {
     const u = await this.prisma.usuario.findUnique({ where: { email }, select: { id: true } });
     return u?.id ?? null;
   }
+
+  // ── Refresh tokens (sessão persistida no Postgres) ───────────────────────────
+
+  /** Grava (ou sobrescreve) o refresh token ativo do usuário. */
+  async salvarRefresh(usuarioId: string, tokenHash: string, expiraEm: Date): Promise<void> {
+    await this.prisma.refreshToken.upsert({
+      where: { usuarioId },
+      create: { usuarioId, tokenHash, expiraEm },
+      update: { tokenHash, expiraEm, criadoEm: new Date() },
+    });
+  }
+
+  /** Recupera o refresh token ativo e não expirado do usuário (hash). */
+  async buscarRefresh(usuarioId: string): Promise<string | null> {
+    const registro = await this.prisma.refreshToken.findUnique({ where: { usuarioId } });
+    if (!registro) return null;
+    if (registro.expiraEm < new Date()) {
+      await this.prisma.refreshToken.delete({ where: { usuarioId } }).catch(() => undefined);
+      return null;
+    }
+    return registro.tokenHash;
+  }
+
+  /** Remove o refresh token do usuário (logout / invalidação de sessão). */
+  async deletarRefresh(usuarioId: string): Promise<void> {
+    await this.prisma.refreshToken.deleteMany({ where: { usuarioId } });
+  }
 }

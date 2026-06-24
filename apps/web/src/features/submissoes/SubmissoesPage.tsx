@@ -90,7 +90,6 @@ export default function SubmissoesPage() {
   const [excluindo, setExcluindo] = useState<Submissao | null>(null);
   const [erroExclusao, setErroExclusao] = useState<string | null>(null);
   const [exportando, setExportando] = useState(false);
-  const [progressoExport, setProgressoExport] = useState(0);
   const [erroExport, setErroExport] = useState<string | null>(null);
 
   // Debounce da busca (~400ms) e reset de página ao mudar o texto.
@@ -178,10 +177,9 @@ export default function SubmissoesPage() {
 
   async function handleExportar() {
     setExportando(true);
-    setProgressoExport(0);
     setErroExport(null);
     try {
-      await exportarSubmissoes(filtrosExport, setProgressoExport);
+      await exportarSubmissoes(filtrosExport);
     } catch (e) {
       setErroExport(e instanceof Error ? e.message : "Falha na exportação.");
     } finally {
@@ -208,7 +206,7 @@ export default function SubmissoesPage() {
               onClick={handleExportar}
               disabled={exportando}
             >
-              {exportando ? `Exportando… ${progressoExport}%` : "Exportar (Excel)"}
+              {exportando ? "Exportando…" : "Exportar (Excel)"}
             </Button>
           )}
           {podeCriar && (

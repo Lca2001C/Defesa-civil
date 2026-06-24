@@ -14,22 +14,20 @@ set -eu
 # Valores padrao (caminhos sempre RELATIVOS — mesma origem via Nginx).
 : "${APP_ENV:=production}"
 : "${API_BASE_URL:=/api}"
-: "${SOCKET_PATH:=/socket.io}"
 
 ENV_JS_PATH="/usr/share/nginx/html/env.js"
 
 echo "[entrypoint] Gerando ${ENV_JS_PATH} (APP_ENV=${APP_ENV})"
 
 # Exporta as variaveis para o envsubst conseguir substitui-las.
-export APP_ENV API_BASE_URL SOCKET_PATH
+export APP_ENV API_BASE_URL
 
 # Gera o env.js substituindo apenas as variaveis conhecidas, evitando
 # interferir em eventuais cifrões do template.
-envsubst '${APP_ENV} ${API_BASE_URL} ${SOCKET_PATH}' > "${ENV_JS_PATH}" <<'EOF'
+envsubst '${APP_ENV} ${API_BASE_URL}' > "${ENV_JS_PATH}" <<'EOF'
 window.__ENV__ = {
   APP_ENV: "${APP_ENV}",
-  API_BASE_URL: "${API_BASE_URL}",
-  SOCKET_PATH: "${SOCKET_PATH}"
+  API_BASE_URL: "${API_BASE_URL}"
 };
 EOF
 

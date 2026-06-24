@@ -61,33 +61,52 @@ export class DashboardRepository {
     });
   }
 
-  listarParaRegional(competenciaId: string, escopo: EscopoDashboard) {
-    return this.prisma.submissao.findMany({
+  /**
+   * Agrega por município×status (no SQL) + resolve as regionais dos municípios
+   * presentes. Evita trazer uma linha por submissão para contar em JS.
+   */
+  async agruparPorRegional(competenciaId: string, escopo: EscopoDashboard) {
+    const grupos = await this.prisma.submissao.groupBy({
+      by: ['municipioId', 'status'],
       where: {
         competenciaId,
         status: { notIn: STATUS_RESPONDIDO_NOT_IN },
         ...this.escopoSubmissaoWhere(escopo),
       },
-      select: {
-        status: true,
-        municipio: { select: { regional: { select: { id: true, nome: true } } } },
-      },
+      _count: { _all: true },
     });
+
+    const municipioIds = [...new Set(grupos.map((g) => g.municipioId))];
+    const municipios = municipioIds.length
+      ? await this.prisma.municipio.findMany({
+          where: { id: { in: municipioIds } },
+          select: { id: true, regional: { select: { id: true, nome: true } } },
+        })
+      : [];
+
+    return { grupos, municipios };
   }
 
-  listarParaFormulario(competenciaId: string, escopo: EscopoDashboard) {
-    return this.prisma.submissao.findMany({
+  /** Agrega por versão de formulário×status (no SQL) + resolve os nomes. */
+  async agruparPorFormulario(competenciaId: string, escopo: EscopoDashboard) {
+    const grupos = await this.prisma.submissao.groupBy({
+      by: ['formularioVersaoId', 'status'],
       where: {
         competenciaId,
         status: { notIn: STATUS_RESPONDIDO_NOT_IN },
         ...this.escopoSubmissaoWhere(escopo),
       },
-      select: {
-        status: true,
-        formularioVersao: {
-          select: { id: true, versao: true, formulario: { select: { id: true, nome: true } } },
-        },
-      },
+      _count: { _all: true },
     });
+
+    const versaoIds = [...new Set(grupos.map((g) => g.formularioVersaoId))];
+    const versoes = versaoIds.length
+      ? await this.prisma.formularioVersao.findMany({
+          where: { id: { in: versaoIds } },
+          select: { id: true, versao: true, formulario: { select: { id: true, nome: true } } },
+        })
+      : [];
+
+    return { grupos, versoes };
   }
 }

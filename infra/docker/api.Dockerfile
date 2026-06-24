@@ -52,6 +52,10 @@ RUN pnpm --filter @dcmg/api exec prisma generate
 FROM node:20-alpine AS runtime
 
 ENV NODE_ENV=production
+# Limita o heap do V8 para caber com folga no limite de memória do container
+# (api ~2.5G na B2s). Evita OOM-kill antes de o GC rodar. Ajuste junto com o
+# limite de memória do serviço em docker-compose.prod.yml.
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 
 WORKDIR /app
 

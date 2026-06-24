@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RedisService } from '../../../infra/redis/redis.service';
+import { CacheService } from '../../../infra/cache/cache.service';
 import { PainelRepository } from '../repositories/painel.repository';
 
 export type StatusMapa = 'RESPONDIDO' | 'EM_PREENCHIMENTO' | 'NAO_RESPONDEU';
@@ -31,7 +31,7 @@ function classificar(status: string): StatusMapa {
 export class PainelService {
   constructor(
     private readonly repo: PainelRepository,
-    private readonly redis: RedisService,
+    private readonly cache: CacheService,
   ) {}
 
   /** Retorna o status de cada município de MG para uma dada competência. */
@@ -40,7 +40,7 @@ export class PainelService {
     formularioVersaoId?: string,
   ): Promise<{ municipioId: number; status: StatusMapa }[]> {
     const chave = `${prefixoCachePainel(competenciaId)}status:${formularioVersaoId ?? 'all'}`;
-    const cacheado = await this.redis.cacheGet<{ municipioId: number; status: StatusMapa }[]>(chave);
+    const cacheado = await this.cache.cacheGet<{ municipioId: number; status: StatusMapa }[]>(chave);
     if (cacheado) return cacheado;
 
     const grupos = await this.repo.agruparStatusPorMunicipio(competenciaId, formularioVersaoId);
@@ -60,18 +60,18 @@ export class PainelService {
       status: mapa.has(id) ? classificar(mapa.get(id)!) : ('NAO_RESPONDEU' as StatusMapa),
     }));
 
-    await this.redis.cacheSet(chave, resultado, CACHE_TTL_SEG);
+    await this.cache.cacheSet(chave, resultado, CACHE_TTL_SEG);
     return resultado;
   }
 
   /** IDs dos municípios de MG (cacheados por tempo longo — mudam raramente). */
   private async listarMunicipiosMg(): Promise<number[]> {
     const chave = 'painel:municipios-mg';
-    const cacheado = await this.redis.cacheGet<number[]>(chave);
+    const cacheado = await this.cache.cacheGet<number[]>(chave);
     if (cacheado) return cacheado;
 
     const ids = await this.repo.listarMunicipiosMgIds();
-    await this.redis.cacheSet(chave, ids, 3600);
+    await this.cache.cacheSet(chave, ids, 3600);
     return ids;
   }
 
@@ -84,7 +84,7 @@ export class PainelService {
     percentual: number;
   }> {
     const chave = `${prefixoCachePainel(competenciaId)}stats`;
-    const cacheado = await this.redis.cacheGet<{
+    const cacheado = await this.cache.cacheGet<{
       total: number;
       respondido: number;
       emPreenchimento: number;
@@ -106,14 +106,16 @@ export class PainelService {
       percentual: total > 0 ? Math.round((respondido / total) * 1000) / 10 : 0,
     };
 
-    await this.redis.cacheSet(chave, stats, CACHE_TTL_SEG);
+    await this.cache.cacheSet(chave, stats, CACHE_TTL_SEG);
     return stats;
   }
 
   /** Dados do drawer: município + COMPDEC + submissões recentes. */
   async buscarDrawerMunicipio(municipioId: number, competenciaId: string) {
-    const municipio = await this.repo.buscarMunicipioComCompdec(municipioId);
-    const submissoes = await this.repo.listarSubmissoesRecentes(municipioId, competenciaId);
+    const [municipio, submissoes] = await Promise.all([
+      this.repo.buscarMunicipioComCompdec(municipioId),
+      this.repo.listarSubmissoesRecentes(municipioId, competenciaId),
+    ]);
 
     return {
       municipio: {

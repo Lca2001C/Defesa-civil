@@ -6,7 +6,7 @@
 #
 # O que faz:
 #   1. Verifica/cria o .env a partir do .env.example
-#   2. Sobe PostgreSQL + Redis via Docker Compose
+#   2. Sobe PostgreSQL via Docker Compose
 #   3. Aguarda os serviços ficarem saudáveis
 #   4. Executa prisma generate + prisma migrate deploy
 #   5. Inicia a API NestJS em modo watch (background)
@@ -84,23 +84,22 @@ else
   echo "${VERDE}[1/6] .env encontrado.${RESET}"
 fi
 
-# ── 2. Subir PostgreSQL + Redis ───────────────────────────────────────────────
-echo "${CIANO}[2/6] Subindo PostgreSQL e Redis (Docker Compose)...${RESET}"
-docker compose up postgres redis -d
-echo "${VERDE}      Containers iniciados.${RESET}"
+# ── 2. Subir PostgreSQL ───────────────────────────────────────────────────────
+echo "${CIANO}[2/6] Subindo PostgreSQL (Docker Compose)...${RESET}"
+docker compose up postgres -d
+echo "${VERDE}      Container iniciado.${RESET}"
 
-# ── 3. Aguardar healthchecks ──────────────────────────────────────────────────
-echo "${CIANO}[3/6] Aguardando PostgreSQL e Redis ficarem prontos...${RESET}"
+# ── 3. Aguardar healthcheck ───────────────────────────────────────────────────
+echo "${CIANO}[3/6] Aguardando o PostgreSQL ficar pronto...${RESET}"
 TENTATIVAS=0
 MAX=30
 while [ $TENTATIVAS -lt $MAX ]; do
   TENTATIVAS=$((TENTATIVAS + 1))
   PG=$(docker compose exec -T postgres pg_isready -q 2>/dev/null && echo 1 || echo 0)
-  RD=$(docker compose exec -T redis redis-cli ping 2>/dev/null | grep -c PONG || echo 0)
-  printf "  postgres:%s redis:%s (tentativa %d/%d)\r" "$PG" "$RD" "$TENTATIVAS" "$MAX"
-  if [ "$PG" = "1" ] && [ "$RD" = "1" ]; then
+  printf "  postgres:%s (tentativa %d/%d)\r" "$PG" "$TENTATIVAS" "$MAX"
+  if [ "$PG" = "1" ]; then
     echo ""
-    echo "${VERDE}      PostgreSQL + Redis prontos.${RESET}"
+    echo "${VERDE}      PostgreSQL pronto.${RESET}"
     break
   fi
   sleep 2
