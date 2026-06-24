@@ -27,6 +27,9 @@ services:
   # API (NestJS) — interna; exposta ao mundo apenas via proxy do Nginx (web).
   # ---------------------------------------------------------------------------
   api:
+    # Em prod, a imagem é puxada do GHCR (publicada pelo CI). O `build` permanece
+    # como fallback para `docker compose ... up -d --build` manual/local.
+    image: ghcr.io/lca2001c/defesa-civil-api:latest
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
@@ -61,6 +64,7 @@ services:
   # Web (Nginx) — serve a SPA e atua como proxy reverso para a API. TLS.
   # ---------------------------------------------------------------------------
   web:
+    image: ghcr.io/lca2001c/defesa-civil-web:latest
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile

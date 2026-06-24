@@ -363,6 +363,36 @@ Teste: `https://defesacivil.exemplo.gov.br` deve carregar a SPA com cadeado vál
 
 ---
 
+## 8.1 CI/CD (GitHub Actions)
+
+O repositório já inclui dois workflows:
+
+- **`.github/workflows/ci.yml`** — em cada PR/push para `main`/`dev`: ESLint, `prisma
+  generate`/`validate`, build dos contratos, typecheck, testes e build (incl. das
+  imagens Docker).
+- **`.github/workflows/deploy.yml`** — em push para `main` (ou manual): builda e
+  **publica as imagens no GHCR** e faz SSH na VM para `docker compose pull && up -d`
+  + `prisma migrate deploy`. **Não builda na VM** (poupa a B2).
+
+Para o deploy automático funcionar, configure os secrets em **Settings → Secrets
+and variables → Actions**:
+
+| Secret | Descrição |
+|---|---|
+| `DEPLOY_HOST` | IP/host da VM |
+| `DEPLOY_USER` | usuário SSH (ex.: `azureuser`) |
+| `DEPLOY_SSH_KEY` | chave **privada** SSH |
+| `DEPLOY_PORT` | (opcional) porta SSH; padrão 22 |
+| `DEPLOY_PATH` | (opcional) caminho do repo na VM; padrão `$HOME/dcmg` |
+| `GHCR_USER` | usuário GitHub para a VM logar no GHCR |
+| `GHCR_TOKEN` | PAT com escopo `read:packages` (login do Docker na VM) |
+
+> Pré-requisitos na VM: repositório clonado em `DEPLOY_PATH`, `.env` de produção
+> preenchido e certificados TLS presentes. As imagens GHCR podem ser tornadas
+> **públicas** (Packages → Package settings) para dispensar `GHCR_USER`/`GHCR_TOKEN`.
+
+Sem os secrets de deploy, o job é **pulado** (o CI continua verde).
+
 ## 9. Pós-deploy (checklist)
 
 - [ ] `https://<dominio>` abre a SPA com TLS válido.

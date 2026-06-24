@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Alert,
   Box,
@@ -118,7 +118,7 @@ function AbaCriarConta() {
     telefone: "", municipioId: "",
   });
   const [ehCoordenador, setEhCoordenador] = useState<"sim" | "nao" | "">("");
-  const [aceite, setAceite] = useState(false);
+  const [, setAceite] = useState(false);
   const [termoLido, setTermoLido] = useState(false);
   const [termoAberto, setTermoAberto] = useState(false);
   const [termo, setTermo] = useState<TermoLgpd | null>(null);

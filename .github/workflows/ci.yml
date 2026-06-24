@@ -39,6 +39,9 @@ jobs:
       - name: Instalar dependências
         run: pnpm install --frozen-lockfile
 
+      - name: Lint (ESLint)
+        run: pnpm lint
+
       # O Prisma Client precisa ser gerado antes do typecheck/build da API.
       - name: Gerar Prisma Client
         run: pnpm --filter @dcmg/api exec prisma generate
