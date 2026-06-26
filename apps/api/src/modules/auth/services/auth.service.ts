@@ -20,6 +20,10 @@ import type { RegistrarDto } from '../dtos/registrar.dto';
 import type { SolicitarRecuperacaoDto, RedefinirSenhaComTokenDto } from '../dtos/recuperar-senha.dto';
 
 const MAX_TENTATIVAS = 5;
+// Limite por IP (mais alto): mitiga brute-force distribuído e ataque de um IP
+// contra várias contas, sem que o lockout por e-mail (DoS de conta) seja o único
+// controle. Janela igual ao bloqueio por e-mail.
+const MAX_TENTATIVAS_IP = 30;
 const BLOQUEIO_SEGUNDOS = 15 * 60;
 const RECOVERY_TTL_HORAS = 1;
 // Rate limit dedicado da recuperação de senha (anti-enumeração / e-mail bombing).
@@ -46,11 +50,20 @@ export class AuthService {
 
   async login(email: string, senha: string, origem: OrigemRequisicao = {}): Promise<TokensDto> {
     const chaveAttempts = `login_fail:${email}`;
+    const chaveIp = origem.ip ? `login_fail_ip:${origem.ip}` : null;
 
-    const tentativas = await this.cache.getNumero(chaveAttempts);
+    const [tentativas, tentativasIp] = await Promise.all([
+      this.cache.getNumero(chaveAttempts),
+      chaveIp ? this.cache.getNumero(chaveIp) : Promise.resolve(0),
+    ]);
     if (tentativas >= MAX_TENTATIVAS) {
       throw new ForbiddenException(
         'Conta temporariamente bloqueada por excesso de tentativas. Tente novamente em 15 minutos.',
+      );
+    }
+    if (chaveIp && tentativasIp >= MAX_TENTATIVAS_IP) {
+      throw new ForbiddenException(
+        'Muitas tentativas de login a partir deste endereço. Tente novamente em 15 minutos.',
       );
     }
 
@@ -63,6 +76,7 @@ export class AuthService {
 
     if (!senhaValida || !usuario) {
       await this.cache.incr(chaveAttempts, BLOQUEIO_SEGUNDOS);
+      if (chaveIp) await this.cache.incr(chaveIp, BLOQUEIO_SEGUNDOS);
       void this.auditoria.registrar({
         atorId: usuario?.id ?? null,
         acao: 'LOGIN_FALHA',

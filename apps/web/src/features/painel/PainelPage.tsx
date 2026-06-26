@@ -206,7 +206,8 @@ export default function PainelPage() {
 
   const respondido = stats?.respondido ?? 0;
   const emPreenchimento = stats?.emPreenchimento ?? 0;
-  const naoRespondeu = stats?.naoRespondeu ?? 853;
+  // 0 durante carregamento (em vez de um total fixo "853" que confunde no loading).
+  const naoRespondeu = stats?.naoRespondeu ?? 0;
   const percentual = stats?.percentual ?? 0;
 
   return (

@@ -61,7 +61,8 @@ testes, builds api+web OK**.
    produção se `SEED_ADMIN_SENHA` ausente. *(corrigido — aborta em prod)*
 8. **[Broken Access Control] COMPDEC** atualizável por usuário REGIONAL fora da
    sua regional. *(corrigido)*
-9. **[Auth] Lockout só por e-mail** → DoS de conta. *(deferido — recomendação)*
+9. **[Auth] Lockout só por e-mail** → brute-force distribuído/single-IP não contado.
+   *(corrigido — adicionado contador por IP, limite 30/15min, além do por-e-mail)*
 10. **[Security Misconfig] CSP duplicado** (Helmet + Nginx) nas respostas `/api`. *(deferido)*
 11. **[Software Integrity] `.npmrc enable-pre-post-scripts=true`** (supply-chain em
     postinstall). *(deferido — recomendação)*
@@ -107,6 +108,26 @@ testes, builds api+web OK**.
 - **LGPD:** auditoria redige `nome/email/telefone(Respondente)` e trunca objetos
   além da profundidade máxima; listagem de usuários mascara CPF e respeita escopo.
 - **Seed:** em `NODE_ENV/APP_ENV=production`, aborta se `SEED_ADMIN_SENHA` ausente.
+- **Lockout por IP:** além do bloqueio por e-mail (5/15min), contador por IP
+  (30/15min) no login, contra brute-force distribuído e de um IP contra várias contas.
+
+### Auditoria de frontend (manual)
+
+A auditoria automatizada do front (subagentes) não pôde rodar (limite de cota),
+então foi feita **revisão manual** de `apps/web`:
+- **Sólido:** ProtectedRoute correto; HTTP centralizado (lib/api.ts com refresh +
+  `auth:logout` no 401); download autenticado (lib/download.ts); formulários com
+  **react-hook-form + zodResolver** (DynamicForm) e lógica condicional; chaves de
+  React Query consistentes (QUERY_KEYS); polling não roda em background (default do RQ).
+- **Sem vazamento de token** em logs/console/URL (verificado por busca).
+- **Sem imports/variáveis não usados** em todo o front (garantido pelo ESLint
+  `no-unused-vars: error`).
+- **Falsos positivos** confirmados: `Math.max(...timeline, 1)` é seguro (fallback +
+  ≤30 itens); refs de layers do leaflet são limitadas (remontagem por `key`).
+- **Corrigido:** fallback do painel `naoRespondeu ?? 853` → `?? 0` (evita número
+  fixo enganoso durante o carregamento).
+- **Recomendação remanescente:** tornar o campo `codigo` do construtor somente-leitura
+  após criado (integridade de regras/respostas).
 
 ## 7. Código morto removido
 
@@ -133,7 +154,7 @@ testes, builds api+web OK**.
 
 | Item | Sev. | Por que deferido |
 |---|---|---|
-| Lockout de login só por e-mail (DoS de conta) | média | Requer estratégia (IP/CAPTCHA); throttle global mitiga parcialmente. |
+| DoS de conta via lockout por e-mail | baixa | Mitigado em parte (agora há contador por IP); eliminação total exige CAPTCHA (recomendação). |
 | Protocolo gerado antes da transação (gaps) | baixa | Duplo-envio já não sobrescreve (guarda de status); gap em falha é aceitável. |
 | Snapshot do histórico lido fora da transação | baixa | Janela mínima em instância única; refator no repo. |
 | `proximaVersao`/`removerComVersoes` sem transação | baixa | Poucos editores; corrida rara. |
@@ -142,7 +163,8 @@ testes, builds api+web OK**.
 | `.npmrc enable-pre-post-scripts=true` | baixa | Trocar por allowlist exige validar build de prisma/esbuild. |
 | Validação `competenciaId` no painel; `@IsEmail` no DTO de submissão | baixa | Robustez; sem impacto de segurança direto. |
 | SMTP duplicado (AuthService vs NotificacoesService) | baixa | Refator (extrair EmailService). |
-| **Auditoria de frontend automatizada falhou** | — | O agente da área retornou resultado inválido; feito spot-check manual (sem log de token, `ProtectedRoute` correto). Recomenda-se auditoria dedicada do front. |
+| Builder: `codigo` editável após criado | média | Risco de quebrar regras/respostas; correção de UX no builder (front), recomendada. |
+| Painel: refs de layers do leaflet | baixa | Verificado: `key={competenciaId}` remonta o GeoJSON; refs são sobrescritas (limitado a ~853, sem leak). |
 
 ## 11. Recomendações futuras
 
