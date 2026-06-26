@@ -25,6 +25,11 @@ FROM node:20-alpine AS build
 # Habilita o pnpm via corepack (gestor de pacotes do monorepo).
 RUN corepack enable
 
+# Toolchain para compilar módulos nativos (ex.: argon2) quando não há prebuild
+# para a plataforma/libc — necessário em ARM64/musl (Oracle Ampere A1 + Alpine).
+# Fica apenas no stage de build; não vai para a imagem de runtime.
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 # Copia todo o repositorio (contexto de build = raiz do monorepo).
