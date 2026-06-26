@@ -1,0 +1,73 @@
+name: Deploy (Oracle Cloud / ARM)
+
+# Deploy na VM Ampere A1 (ARM64) do Oracle Cloud Always Free.
+# As imagens são buildadas NA PRÓPRIA VM (ARM nativo) — não usa GHCR.
+#
+# É MANUAL (workflow_dispatch) de propósito: assim você escolhe explicitamente
+# deployar no OCI, sem conflitar com o deploy do Azure (deploy.yml, push→main).
+#
+# Secrets necessários (Settings → Secrets and variables → Actions):
+#   ORACLE_DEPLOY_HOST     IP/host da VM OCI
+#   ORACLE_DEPLOY_USER     usuário SSH (ubuntu | opc)
+#   ORACLE_DEPLOY_SSH_KEY  chave PRIVADA SSH
+#   ORACLE_DEPLOY_PORT     (opcional) porta SSH; padrão 22
+#   ORACLE_DEPLOY_PATH     (opcional) caminho do repo na VM; padrão $HOME/dcmg
+# Sem ORACLE_DEPLOY_HOST, o job é PULADO (não falha).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch/tag a implantar na VM
+        required: false
+        default: main
+
+concurrency:
+  group: deploy-oracle
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy na VM OCI (build + up)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Verificar secrets de deploy
+        id: guard
+        run: |
+          if [ -n "${{ secrets.ORACLE_DEPLOY_HOST }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Secrets de deploy OCI ausentes (ORACLE_DEPLOY_HOST). Pulando."
+          fi
+
+      - name: Deploy via SSH (docker compose oracle)
+        if: steps.guard.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.ORACLE_DEPLOY_HOST }}
+          username: ${{ secrets.ORACLE_DEPLOY_USER }}
+          key: ${{ secrets.ORACLE_DEPLOY_SSH_KEY }}
+          port: ${{ secrets.ORACLE_DEPLOY_PORT || 22 }}
+          command_timeout: 35m
+          envs: DEPLOY_PATH,DEPLOY_REF
+          script: |
+            set -e
+            cd "${DEPLOY_PATH:-$HOME/dcmg}"
+            REF="${DEPLOY_REF:-main}"
+            echo "==> Atualizando código (ref: ${REF})"
+            git fetch --all --prune
+            git checkout "${REF}"
+            git pull --ff-only origin "${REF}"
+            echo "==> Build + subida (ARM nativo na VM)"
+            docker compose -f docker-compose.oracle.yml up -d --build
+            echo "==> Migrations Prisma"
+            docker compose -f docker-compose.oracle.yml exec -T -w /app/apps/api api \
+              /app/node_modules/.bin/prisma migrate deploy
+            echo "==> Limpeza"
+            docker image prune -f
+            docker compose -f docker-compose.oracle.yml ps
+        env:
+          DEPLOY_PATH: ${{ secrets.ORACLE_DEPLOY_PATH }}
+          DEPLOY_REF: ${{ github.event.inputs.ref }}

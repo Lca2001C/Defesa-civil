@@ -284,18 +284,31 @@ Storage). Custo recorrente: **US$ 0** enquanto respeitar os limites do free tier
 
 ---
 
-## 13. CI/CD no OCI (opcional)
+## 13. CI/CD no OCI
 
-O `deploy.yml` atual publica imagens **amd64** no GHCR (voltado ao Azure). Para
-CD automático no OCI (ARM64), há dois caminhos:
+Já existe o workflow **`.github/workflows/deploy-oracle.yml`** — deploy **manual**
+(Actions → "Deploy (Oracle Cloud / ARM)" → Run workflow). Ele faz SSH na VM e roda
+`git pull && docker compose -f docker-compose.oracle.yml up -d --build` + migrations
+(build ARM nativo na própria VM, sem registry).
 
-1. **Build na VM** (mais simples): um workflow que faz SSH e roda
-   `git pull && docker compose -f docker-compose.oracle.yml up -d --build`.
-2. **Imagens multi-arch**: alterar o `build-push` para
-   `platforms: linux/amd64,linux/arm64` (docker/build-push-action) e a VM faz
-   `pull`. Requer QEMU no runner (`docker/setup-qemu-action`).
+É manual de propósito, para não conflitar com o `deploy.yml` (Azure, que dispara em
+push→main). Configure os secrets:
 
-Para começar, o deploy manual (§7) já entrega tudo funcionando.
+| Secret | Descrição |
+|---|---|
+| `ORACLE_DEPLOY_HOST` | IP/host da VM OCI |
+| `ORACLE_DEPLOY_USER` | usuário SSH (`ubuntu` ou `opc`) |
+| `ORACLE_DEPLOY_SSH_KEY` | chave **privada** SSH |
+| `ORACLE_DEPLOY_PORT` | (opcional) porta SSH; padrão 22 |
+| `ORACLE_DEPLOY_PATH` | (opcional) caminho do repo na VM; padrão `$HOME/dcmg` |
+
+Pré-requisitos na VM (uma vez): repo clonado em `ORACLE_DEPLOY_PATH`, `.env`
+preenchido e certificados TLS presentes (passos 5–6). O **seed inicial** continua
+manual (§8). Sem os secrets, o job é pulado.
+
+> Alternativa (imagens multi-arch via GHCR): trocar o `build-push` do `deploy.yml`
+> para `platforms: linux/amd64,linux/arm64` (com `docker/setup-qemu-action`) e a VM
+> só faria `pull`. Mais complexo; o build-na-VM acima já entrega tudo funcionando.
 
 ---
 
