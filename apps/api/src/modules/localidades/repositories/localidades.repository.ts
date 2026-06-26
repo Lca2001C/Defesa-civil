@@ -81,6 +81,15 @@ export class LocalidadesRepository {
     return !!(await this.prisma.municipio.findUnique({ where: { id }, select: { id: true } }));
   }
 
+  /** regionalId do município (para checagem de escopo REGIONAL). */
+  async buscarRegionalDoMunicipio(id: number): Promise<string | null | undefined> {
+    const m = await this.prisma.municipio.findUnique({
+      where: { id },
+      select: { regionalId: true },
+    });
+    return m?.regionalId;
+  }
+
   upsertCompdec(municipioId: number, dados: AtualizarCompdecDto) {
     return this.prisma.compdec.upsert({
       where: { municipioId },

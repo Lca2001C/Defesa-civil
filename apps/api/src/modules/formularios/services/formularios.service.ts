@@ -102,8 +102,11 @@ export class FormulariosService {
 
   /**
    * Salva edições do construtor numa versão.
-   * Versionamento automático: se a versão está PUBLICADA e já tem submissões,
-   * cria uma nova versão (rascunho) com o schema editado; senão edita no lugar.
+   * Versionamento automático/imutabilidade: uma versão PUBLICADA nunca é editada
+   * in-place (a publicação — não a 1ª submissão — é o gatilho de imutabilidade),
+   * pois já pode estar vinculada a uma competência ABERTA e visível aos
+   * municípios. Nesse caso, cria-se uma nova versão (rascunho) com o schema
+   * editado. Apenas versões RASCUNHO são editadas no lugar.
    */
   async salvarVersao(formularioId: string, versaoId: string, dto: CriarVersaoDto) {
     const versao = await this.repo.buscarVersaoComContagem(versaoId);
@@ -111,9 +114,7 @@ export class FormulariosService {
       throw new NotFoundException(`Versão '${versaoId}' não encontrada neste formulário.`);
     }
 
-    const precisaNovaVersao =
-      versao.status === FormularioStatus.PUBLICADO && versao._count.submissoes > 0;
-    if (precisaNovaVersao) {
+    if (versao.status === FormularioStatus.PUBLICADO) {
       return this.criarVersao(formularioId, dto);
     }
 

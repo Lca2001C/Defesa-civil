@@ -4,6 +4,7 @@
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { mascaraCpf } from '../../../shared/utils/format.util';
 import { hashSenha } from '../../../shared/hash.util';
 import { PERMISSION_LEVEL } from '../../../shared/constants';
@@ -55,8 +56,32 @@ export class UsuariosService {
     return this.repo.atualizarPerfilProprio(usuarioId, data);
   }
 
-  listar(filtros?: { municipioId?: number; regionalId?: string; ativo?: boolean }) {
-    return this.repo.listar(filtros ?? {});
+  async listar(
+    filtros: { municipioId?: number; regionalId?: string; ativo?: boolean },
+    usuario: JwtPayload,
+  ) {
+    // Escopo do solicitante (LGPD/minimização): só gestores estaduais veem todos.
+    const usuarios = await this.repo.listar(filtros ?? {}, this.escopoListagem(usuario));
+    // Máscara de CPF na grade (mesma política dos demais endpoints).
+    return usuarios.map((u) => ({ ...u, cpf: mascaraCpf(u.cpf) }));
+  }
+
+  /** Restringe a listagem de usuários ao escopo do solicitante. */
+  private escopoListagem(usuario: JwtPayload): Prisma.UsuarioWhereInput {
+    if (usuario.perfilNivel >= PERMISSION_LEVEL.GESTOR_ESTADUAL) return {};
+    if (usuario.escopo === 'MUNICIPAL' && usuario.municipioId) {
+      return { municipioId: usuario.municipioId };
+    }
+    if (usuario.escopo === 'REGIONAL' && usuario.regionalId) {
+      return {
+        OR: [
+          { regionalId: usuario.regionalId },
+          { municipio: { regionalId: usuario.regionalId } },
+        ],
+      };
+    }
+    // Sem escopo reconhecível e sem nível estadual: só o próprio registro.
+    return { id: usuario.sub };
   }
 
   async buscarPorId(id: string, usuario: JwtPayload) {
@@ -66,16 +91,21 @@ export class UsuariosService {
     return { ...encontrado, cpf: mascaraCpf(encontrado.cpf) };
   }
 
-  async criar(dto: CriarUsuarioDto, _usuario: JwtPayload) {
-    const [emailExiste, cpfExiste, perfilId] = await Promise.all([
+  async criar(dto: CriarUsuarioDto, usuario: JwtPayload) {
+    const [emailExiste, cpfExiste, perfilAlvo] = await Promise.all([
       this.repo.emailExiste(dto.email),
       this.repo.cpfExiste(dto.cpf),
-      this.repo.buscarPerfilIdPorCodigo(dto.perfilCodigo),
+      this.repo.buscarPerfilPorCodigo(dto.perfilCodigo),
     ]);
 
     if (emailExiste) throw new BadRequestException('E-mail já cadastrado.');
     if (cpfExiste) throw new BadRequestException('CPF já cadastrado.');
-    if (!perfilId) throw new NotFoundException(`Perfil "${dto.perfilCodigo}" não encontrado.`);
+    if (!perfilAlvo) throw new NotFoundException(`Perfil "${dto.perfilCodigo}" não encontrado.`);
+
+    // Anti-escalonamento: ninguém cria/atribui perfil de nível ACIMA do seu.
+    this.validarNivelAlvo(perfilAlvo.nivel, usuario);
+    // Multi-tenant: o ator não pode criar usuário fora do seu escopo.
+    await this.validarEscopoAlvo(dto, usuario);
 
     const senhaHash = await hashSenha(dto.senha);
 
@@ -90,7 +120,7 @@ export class UsuariosService {
       ufId: dto.ufId ?? null,
       regionalId: dto.regionalId ?? null,
       municipioId: dto.municipioId ?? null,
-      perfilId,
+      perfilId: perfilAlvo.id,
     });
   }
 
@@ -100,9 +130,11 @@ export class UsuariosService {
 
     let perfilId: string | undefined;
     if (dto.perfilCodigo) {
-      const resolvido = await this.repo.buscarPerfilIdPorCodigo(dto.perfilCodigo);
-      if (!resolvido) throw new NotFoundException(`Perfil "${dto.perfilCodigo}" não encontrado.`);
-      perfilId = resolvido;
+      const perfilAlvo = await this.repo.buscarPerfilPorCodigo(dto.perfilCodigo);
+      if (!perfilAlvo) throw new NotFoundException(`Perfil "${dto.perfilCodigo}" não encontrado.`);
+      // Anti-escalonamento: não promover a um nível acima do próprio.
+      this.validarNivelAlvo(perfilAlvo.nivel, usuario);
+      perfilId = perfilAlvo.id;
     }
 
     return this.repo.atualizar(id, {
@@ -183,5 +215,48 @@ export class UsuariosService {
     if (usuario.perfilNivel >= PERMISSION_LEVEL.GESTOR_ESTADUAL) return;
     // Outros escopos não podem gerenciar usuários arbitrários
     throw new ForbiddenException('Acesso negado a este usuário.');
+  }
+
+  /** Impede conceder/atribuir um perfil de nível ACIMA do nível do solicitante. */
+  private validarNivelAlvo(nivelAlvo: number, usuario: JwtPayload): void {
+    if (nivelAlvo > usuario.perfilNivel) {
+      throw new ForbiddenException(
+        'Você não pode atribuir um perfil de nível superior ao seu.',
+      );
+    }
+  }
+
+  /** Garante que o usuário criado pertence ao escopo (tenant) do solicitante. */
+  private async validarEscopoAlvo(dto: CriarUsuarioDto, usuario: JwtPayload): Promise<void> {
+    // Gestores estaduais podem criar em qualquer escopo.
+    if (usuario.perfilNivel >= PERMISSION_LEVEL.GESTOR_ESTADUAL) return;
+
+    if (usuario.escopo === 'MUNICIPAL') {
+      if (dto.escopo !== 'MUNICIPAL' || dto.municipioId !== usuario.municipioId) {
+        throw new ForbiddenException('Você só pode criar usuários do seu próprio município.');
+      }
+      return;
+    }
+
+    if (usuario.escopo === 'REGIONAL') {
+      if (dto.escopo === 'ESTADUAL') {
+        throw new ForbiddenException('Você não pode criar usuários de escopo estadual.');
+      }
+      if (dto.escopo === 'REGIONAL' && dto.regionalId !== usuario.regionalId) {
+        throw new ForbiddenException('Você só pode criar usuários da sua regional.');
+      }
+      if (dto.escopo === 'MUNICIPAL') {
+        const regional = dto.municipioId
+          ? await this.repo.buscarRegionalDoMunicipio(dto.municipioId)
+          : null;
+        if (!regional || regional !== usuario.regionalId) {
+          throw new ForbiddenException('Você só pode criar usuários de municípios da sua regional.');
+        }
+      }
+      return;
+    }
+
+    // Escopo não reconhecido sem nível estadual: bloqueia por segurança.
+    throw new ForbiddenException('Escopo insuficiente para criar usuários.');
   }
 }

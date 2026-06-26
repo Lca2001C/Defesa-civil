@@ -34,10 +34,23 @@ const EXT_ANEXO_PERMITIDAS = [
   '.mp3', '.wav', '.gz', '.7z', '.rar', '.csv', '.txt',
 ];
 
-/** Valida tipo de arquivo pelo MIME OU extensão (aceita se qualquer um casar). */
+/**
+ * Valida o tipo do anexo pela EXTENSÃO (allowlist) — gate principal, pois o
+ * nomeOriginal/mimeType vêm do cliente. Exigir a extensão na allowlist impede o
+ * bypass de enviar mimeType='application/octet-stream' com extensão perigosa
+ * (.exe/.html/.svg/.js). O MIME, quando presente, é checado como reforço, mas
+ * nunca AMPLIA o que a extensão permite.
+ */
 export function tipoArquivoPermitido(nomeOriginal: string, mimeType?: string): boolean {
-  const ext = nomeOriginal.slice(nomeOriginal.lastIndexOf('.')).toLowerCase();
-  const mimeOk = !!mimeType && MIME_ANEXO_PERMITIDOS.has(mimeType);
+  const idx = nomeOriginal.lastIndexOf('.');
+  if (idx < 0) return false; // sem extensão → recusa
+  const ext = nomeOriginal.slice(idx).toLowerCase();
   const extOk = EXT_ANEXO_PERMITIDAS.includes(ext);
-  return mimeOk || extOk;
+  if (!extOk) return false;
+  // Se o cliente declarou um MIME, ele não pode ser de um tipo fora da allowlist
+  // (octet-stream é tolerado para binários como SHP). Extensão já foi validada.
+  if (mimeType && mimeType !== 'application/octet-stream' && !MIME_ANEXO_PERMITIDOS.has(mimeType)) {
+    return false;
+  }
+  return true;
 }

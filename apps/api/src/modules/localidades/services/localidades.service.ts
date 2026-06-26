@@ -58,9 +58,16 @@ export class LocalidadesService {
   }
 
   async atualizarCompdec(municipioId: number, dto: AtualizarCompdecDto, usuario: JwtPayload) {
-    // Apenas ADMIN_MUNICIPAL do próprio município ou perfis estaduais
+    // Escopo: MUNICIPAL só o próprio município; REGIONAL só municípios da sua
+    // regional; perfis estaduais sem restrição.
     if (usuario.escopo === 'MUNICIPAL' && usuario.municipioId !== municipioId) {
       throw new ForbiddenException('Você só pode atualizar dados do seu próprio município.');
+    }
+    if (usuario.escopo === 'REGIONAL') {
+      const regional = await this.repo.buscarRegionalDoMunicipio(municipioId);
+      if (!regional || regional !== usuario.regionalId) {
+        throw new ForbiddenException('Você só pode atualizar municípios da sua regional.');
+      }
     }
 
     if (!(await this.repo.municipioExiste(municipioId))) {

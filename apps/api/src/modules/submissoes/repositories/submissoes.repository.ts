@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import {
   Competencia,
   FormularioVersao,
@@ -10,6 +10,13 @@ import {
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import type { JwtPayload } from '../../../common/types/jwt-payload';
 import { montarWhereSubmissoes, type FiltrosSubmissao } from '../utils/submissoes-where.util';
+
+/** Conflito de concorrência: o estado mudou entre a leitura e a escrita (TOCTOU). */
+function conflitoEstado(): ConflictException {
+  return new ConflictException(
+    'A submissão foi alterada por outra operação. Recarregue e tente novamente.',
+  );
+}
 
 interface DadosRespondente {
   protocolo: string;
@@ -167,28 +174,29 @@ export class SubmissoesRepository {
     autorId: string,
   ): Promise<Submissao> {
     const snapshot = await this.lerDados(this.prisma, id);
+    const statusNovo =
+      statusAnterior === SubmissaoStatus.RASCUNHO
+        ? SubmissaoStatus.EM_PREENCHIMENTO
+        : statusAnterior;
     return this.prisma.$transaction(async (tx) => {
+      // Guarda de status (anti-TOCTOU): só atualiza se ainda estiver no estado lido.
+      const upd = await tx.submissao.updateMany({
+        where: { id, status: statusAnterior },
+        data: { status: statusNovo },
+      });
+      if (upd.count === 0) throw conflitoEstado();
       await tx.respostaHistorico.create({
         data: {
           submissaoId: id,
           autorId,
           acao: 'EDITOU',
           statusAnterior,
-          statusNovo:
-            statusAnterior === SubmissaoStatus.RASCUNHO
-              ? SubmissaoStatus.EM_PREENCHIMENTO
-              : statusAnterior,
+          statusNovo,
           snapshot: snapshot as Prisma.InputJsonValue,
         },
       });
       await this.sincronizarRespostas(tx, id, versaoId, dados);
-      return tx.submissao.update({
-        where: { id },
-        data:
-          statusAnterior === SubmissaoStatus.RASCUNHO
-            ? { status: SubmissaoStatus.EM_PREENCHIMENTO }
-            : {},
-      });
+      return tx.submissao.findUniqueOrThrow({ where: { id } });
     });
   }
 
@@ -202,6 +210,13 @@ export class SubmissoesRepository {
   ): Promise<Submissao> {
     const snapshot = await this.lerDados(this.prisma, id);
     return this.prisma.$transaction(async (tx) => {
+      // Guarda de status: um duplo-envio concorrente perde aqui (count=0) e não
+      // sobrescreve o protocolo já gravado pelo primeiro envio.
+      const upd = await tx.submissao.updateMany({
+        where: { id, status: statusAnterior },
+        data: { status: SubmissaoStatus.ENVIADO, protocolo, enviadoEm: new Date() },
+      });
+      if (upd.count === 0) throw conflitoEstado();
       await this.upsertRespostas(tx, id, versaoId, automaticos);
       await tx.respostaHistorico.create({
         data: {
@@ -213,10 +228,7 @@ export class SubmissoesRepository {
           snapshot: snapshot as Prisma.InputJsonValue,
         },
       });
-      return tx.submissao.update({
-        where: { id },
-        data: { status: SubmissaoStatus.ENVIADO, protocolo, enviadoEm: new Date() },
-      });
+      return tx.submissao.findUniqueOrThrow({ where: { id } });
     });
   }
 
@@ -230,6 +242,16 @@ export class SubmissoesRepository {
   ): Promise<Submissao> {
     const snapshot = await this.lerDados(this.prisma, id);
     return this.prisma.$transaction(async (tx) => {
+      // Guarda de status: duas ações concorrentes (ex.: dois 'aprovar') não
+      // disparam dupla transição/notificação — a perdedora recebe conflito.
+      const upd = await tx.submissao.updateMany({
+        where: { id, status: statusAnterior },
+        data: {
+          status: novoStatus,
+          ...(novoStatus === SubmissaoStatus.APROVADO ? { aprovadoEm: new Date() } : {}),
+        },
+      });
+      if (upd.count === 0) throw conflitoEstado();
       await tx.respostaHistorico.create({
         data: {
           submissaoId: id,
@@ -241,13 +263,7 @@ export class SubmissoesRepository {
           snapshot: snapshot as Prisma.InputJsonValue,
         },
       });
-      return tx.submissao.update({
-        where: { id },
-        data: {
-          status: novoStatus,
-          ...(novoStatus === SubmissaoStatus.APROVADO ? { aprovadoEm: new Date() } : {}),
-        },
-      });
+      return tx.submissao.findUniqueOrThrow({ where: { id } });
     });
   }
 

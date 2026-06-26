@@ -163,7 +163,7 @@ export class SubmissoesService {
   async buscarPorId(id: string, usuario: JwtPayload) {
     const sub = await this.repo.buscarDetalhe(id);
     if (!sub) throw new NotFoundException('Submissão não encontrada.');
-    this.verificarEscopo(sub, usuario);
+    await this.verificarEscopo(sub, usuario);
 
     // Buscamos os 30 mais recentes (desc); reordenamos asc para exibição cronológica.
     const historico = [...sub.historico].reverse();
@@ -374,15 +374,24 @@ export class SubmissoesService {
       );
     }
 
+    // Persiste o content-type REAL do blob (não o declarado pelo cliente).
     const arq = await this.storage.registrarArquivo({
       chave: dto.chave,
       nomeOriginal: dto.nomeOriginal,
-      mimeType: dto.mimeType,
+      mimeType: stat.contentType ?? dto.mimeType,
       tamanhoBytes: stat.tamanhoBytes,
     });
 
-    await this.cache.del(this.chaveAnexoEmitida(id, dto.chave));
-    return this.repo.criarAnexo(id, arq.id, dto.perguntaCodigo ?? null);
+    // Consistência: se o vínculo do anexo falhar, remove o Arquivo+blob recém-criados
+    // para não deixar órfãos (registrarArquivo + criarAnexo não são uma transação).
+    try {
+      const anexo = await this.repo.criarAnexo(id, arq.id, dto.perguntaCodigo ?? null);
+      await this.cache.del(this.chaveAnexoEmitida(id, dto.chave));
+      return anexo;
+    } catch (e) {
+      await this.storage.deletar(dto.chave).catch(() => undefined);
+      throw e;
+    }
   }
 
   private chaveAnexoEmitida(submissaoId: string, chave: string): string {
@@ -503,15 +512,34 @@ export class SubmissoesService {
     });
   }
 
-  private verificarEscopo(sub: { municipioId: number; autorId: string }, usuario: JwtPayload) {
+  /**
+   * Verifica o escopo de acesso a UMA submissão por ID — espelhando EXATAMENTE
+   * as regras de `montarWhereSubmissoes` (paridade lista ↔ acesso por ID), para
+   * fechar IDOR: MUNICIPAL → próprio município; REGIONAL → sua regional;
+   * perfilNivel < ADMIN_MUNICIPAL → apenas as próprias submissões.
+   */
+  private async verificarEscopo(
+    sub: { municipioId: number; autorId: string },
+    usuario: JwtPayload,
+  ): Promise<void> {
+    // 1) Escopo geográfico
     if (usuario.escopo === 'MUNICIPAL') {
-      if (sub.municipioId !== usuario.municipioId && sub.autorId !== usuario.sub) {
+      if (sub.municipioId !== usuario.municipioId) {
+        throw new ForbiddenException('Acesso negado a esta submissão.');
+      }
+    } else if (usuario.escopo === 'REGIONAL') {
+      const regional = await this.repo.buscarRegionalDoMunicipio(sub.municipioId);
+      if (!regional || regional !== usuario.regionalId) {
         throw new ForbiddenException('Acesso negado a esta submissão.');
       }
     }
-    // Escopo REGIONAL é verificado nos pontos que carregam o município
-    // (validarMunicipioNoEscopo). Para leitura por ID, o where da listagem
-    // já restringe; aqui o autor sempre acessa a própria submissão.
+    // 2) Perfis abaixo de ADMIN_MUNICIPAL só acessam as PRÓPRIAS submissões
+    if (
+      usuario.perfilNivel < PERMISSION_LEVEL.ADMIN_MUNICIPAL &&
+      sub.autorId !== usuario.sub
+    ) {
+      throw new ForbiddenException('Acesso negado a esta submissão.');
+    }
   }
 
   /**
@@ -537,7 +565,7 @@ export class SubmissoesService {
   private async carregarParaEscopo(id: string, usuario: JwtPayload) {
     const sub = await this.repo.buscarPorId(id);
     if (!sub) throw new NotFoundException('Submissão não encontrada.');
-    this.verificarEscopo(sub, usuario);
+    await this.verificarEscopo(sub, usuario);
     return sub;
   }
 

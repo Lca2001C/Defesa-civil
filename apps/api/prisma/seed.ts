@@ -269,6 +269,16 @@ async function semearPerfis(): Promise<number> {
  * no ambiente antes de executar o seed.
  */
 async function semearSuperAdmin(): Promise<{ criado: boolean; email: string }> {
+  const ehProducao =
+    process.env["NODE_ENV"] === "production" || process.env["APP_ENV"] === "production";
+  // Em produção é PROIBIDO usar a senha/CPF padrão (estão no repositório).
+  if (ehProducao && !process.env["SEED_ADMIN_SENHA"]) {
+    throw new Error(
+      "SEED_ADMIN_SENHA é obrigatória em produção (defina também SEED_ADMIN_EMAIL/CPF). " +
+        "Abortei o seed para não criar um admin com senha padrão conhecida.",
+    );
+  }
+
   const email = process.env["SEED_ADMIN_EMAIL"] ?? "admin@defesacivil.mg.gov.br";
   const senha = process.env["SEED_ADMIN_SENHA"] ?? "Defesa@Civil2026!";
   const cpf   = process.env["SEED_ADMIN_CPF"]   ?? "00000000000";

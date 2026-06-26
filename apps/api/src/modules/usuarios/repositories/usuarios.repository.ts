@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EscopoUsuario, Usuario } from '@prisma/client';
+import { EscopoUsuario, Prisma, Usuario } from '@prisma/client';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 
 interface FiltrosUsuario {
@@ -93,12 +93,14 @@ export class UsuariosRepository {
     });
   }
 
-  listar(filtros: FiltrosUsuario) {
+  listar(filtros: FiltrosUsuario, escopoWhere: Prisma.UsuarioWhereInput = {}) {
     return this.prisma.usuario.findMany({
       where: {
         ...(filtros.municipioId !== undefined ? { municipioId: filtros.municipioId } : {}),
         ...(filtros.regionalId ? { regionalId: filtros.regionalId } : {}),
         ...(filtros.ativo !== undefined ? { ativo: filtros.ativo } : {}),
+        // Escopo do solicitante (sempre por cima — nunca amplia).
+        ...escopoWhere,
       },
       select: {
         id: true, nome: true, email: true, cpf: true, cargo: true,
@@ -141,6 +143,24 @@ export class UsuariosRepository {
   async buscarPerfilIdPorCodigo(codigo: string): Promise<string | null> {
     const perfil = await this.prisma.perfil.findUnique({ where: { codigo } });
     return perfil?.id ?? null;
+  }
+
+  /** Perfil (id + nível) por código — usado para checar teto de nível na gestão de usuários. */
+  async buscarPerfilPorCodigo(codigo: string): Promise<{ id: string; nivel: number } | null> {
+    const perfil = await this.prisma.perfil.findUnique({
+      where: { codigo },
+      select: { id: true, nivel: true },
+    });
+    return perfil ?? null;
+  }
+
+  /** regionalId do município (para checagem de escopo REGIONAL na gestão de usuários). */
+  async buscarRegionalDoMunicipio(municipioId: number): Promise<string | null | undefined> {
+    const m = await this.prisma.municipio.findUnique({
+      where: { id: municipioId },
+      select: { regionalId: true },
+    });
+    return m?.regionalId;
   }
 
   async perfilEhSuperAdmin(perfilId: string): Promise<boolean> {

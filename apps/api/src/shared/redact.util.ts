@@ -20,6 +20,16 @@ const CAMPOS_SENSIVEIS = new Set(
     'cpf',
     'cpfRespondente',
     'cpf_respondente',
+    // PII do respondente no snapshot/entidade Submissao (auditoria não deve
+    // persistir esses dados pessoais em claro).
+    'nomeRespondente',
+    'nome_respondente',
+    'emailRespondente',
+    'email_respondente',
+    'telefoneRespondente',
+    'telefone_respondente',
+    'email',
+    'telefone',
     'dados', // JSONB de respostas pode conter dados pessoais
     'dadosSnapshot',
     'dados_snapshot',
@@ -47,7 +57,10 @@ export function ehCampoSensivel(chave: string): boolean {
  * `[REDACTED]`. Limita a profundidade para evitar recursão excessiva.
  */
 export function redigir(obj: unknown, profundidade = 0): unknown {
-  if (profundidade > 3 || obj === null || typeof obj !== 'object') return obj;
+  if (obj === null || typeof obj !== 'object') return obj;
+  // Objetos além da profundidade máxima são truncados (não persistir cru — pode
+  // conter PII não inspecionada).
+  if (profundidade > 3) return PLACEHOLDER_REDIGIDO;
   if (Array.isArray(obj)) return obj.map((item) => redigir(item, profundidade + 1));
 
   const resultado: Record<string, unknown> = {};

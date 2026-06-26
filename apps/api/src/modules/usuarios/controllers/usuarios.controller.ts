@@ -66,15 +66,19 @@ export class UsuariosController {
   @ApiQuery({ name: 'regionalId', required: false })
   @ApiQuery({ name: 'ativo', required: false, type: Boolean })
   listar(
+    @UsuarioAtual() usuario: JwtPayload,
     @Query('municipioId') municipioId?: string,
     @Query('regionalId') regionalId?: string,
     @Query('ativo') ativo?: string,
   ) {
-    return this.service.listar({
-      municipioId: municipioId ? Number(municipioId) : undefined,
-      regionalId,
-      ativo: ativo !== undefined ? ativo === 'true' : undefined,
-    });
+    return this.service.listar(
+      {
+        municipioId: municipioId ? Number(municipioId) : undefined,
+        regionalId,
+        ativo: ativo !== undefined ? ativo === 'true' : undefined,
+      },
+      usuario,
+    );
   }
 
   @Get(':id')
