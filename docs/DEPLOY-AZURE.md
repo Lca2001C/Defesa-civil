@@ -1,80 +1,133 @@
-# Deploy na Azure — SIG-COMPDEC MG (passo a passo)
+# Deploy na Azure — 3 serviços gerenciados (custo otimizado)
 
-Runbook completo para subir a Plataforma Defesa Civil MG em produção na Azure, na
-configuração simplificada (instância única, ≤100 usuários simultâneos).
+Runbook para subir a **Plataforma Defesa Civil MG** em produção usando **3 serviços
+gerenciados** da Azure, sem nenhuma VM para manter. Esta é a abordagem **recomendada**
+e de **menor custo/manutenção**.
 
-## Arquitetura alvo
+> Procura o plano antigo de **VM única** (Docker Compose numa B2s)? Continua
+> disponível em [DEPLOY-AZURE-VM.md](DEPLOY-AZURE-VM.md).
+
+---
+
+## Visão geral: os 3 serviços
+
+Conforme a orientação de criar serviços separados para otimizar custo, o deploy se
+divide em **3 recursos Azure independentes**, cada um cobrado e dimensionado à parte:
+
+| # | "Coisa" a criar | Serviço Azure | Para quê |
+|---|---|---|---|
+| 1 | **Banco de dados** | Azure Database for PostgreSQL (Flexible Server) | Dados da aplicação (gerenciado, com backup automático) |
+| 2 | **Containers** | Azure Container Registry (ACR) | Guardar as imagens Docker (`api` e `web`) |
+| 3 | **Apps** | Azure Container Apps (ACA) | Rodar a aplicação (serverless, com TLS e escala automática) |
+
+Mais um recurso de **apoio** (barato, não muda esse desenho de 3 serviços):
+
+- **Azure Blob Storage** — anexos enviados/baixados **direto pelo navegador** via URL
+  SAS. Já existia no projeto e permanece.
 
 ```
-                         Internet (HTTPS)
-                               │
-                    ┌──────────▼───────────┐
-                    │   Azure VM  B2s      │   2 vCPU / 4 GB
-                    │  ┌────────────────┐  │
-                    │  │ web (Nginx)    │  │  :80/:443  → SPA + proxy /api
-                    │  │ api (NestJS)   │  │  :4000 (interno)
-                    │  └───────┬────────┘  │
-                    └──────────┼───────────┘
-              ┌────────────────┼────────────────┐
-              ▼                                  ▼
-  Azure Database for PostgreSQL      Azure Blob Storage
-  (Flexible Server, gerenciado)      (container "anexos", upload via SAS)
+                          Internet (HTTPS)
+                                │
+                  ┌─────────────▼──────────────┐
+                  │   3. Azure Container Apps   │   serverless, escala 0→1
+                  │  ┌───────────────────────┐  │   TLS gerenciado (grátis)
+                  │  │  app "dcmg-app"        │  │
+                  │  │  ┌─────────┐ ┌───────┐ │  │   ingress :8080 → web
+                  │  │  │ web     │ │ api   │ │  │   web faz proxy /api →
+                  │  │  │ (Nginx) │→│(Nest) │ │  │   127.0.0.1:4000 (api)
+                  │  │  │ :8080   │ │ :4000 │ │  │
+                  │  │  └─────────┘ └───┬───┘ │  │
+                  │  └──────────────────┼─────┘  │
+                  └──────────┬──────────┼────────┘
+              puxa imagens   │          │ DSN + connection string
+              ┌──────────────▼──┐   ┌───▼─────────────────┐   ┌──────────────────┐
+              │ 2. Container     │   │ 1. PostgreSQL        │   │ Blob Storage      │
+              │    Registry(ACR) │   │    Flexible Server   │   │ (anexos via SAS)  │
+              └──────────────────┘   └──────────────────────┘   └──────────────────┘
 ```
 
-- **VM B2s**: roda só `api` + `web` (containers Docker). Sem Postgres/Redis na VM.
-- **Banco**: Azure Database for PostgreSQL **gerenciado** (fora da VM, com backups automáticos).
-- **Anexos**: Azure Blob Storage — o navegador envia/baixa **direto** via URL SAS.
+### Por que isso otimiza custo
 
-> Por que B2s e não B1s? A B1s (1 vCPU / 1 GB) é apertada para Node + Nginx +
-> build. A **B2s (2 vCPU / 4 GB)** dá folga confortável para 100 usuários. Se for
-> manter o Postgres também na VM (não recomendado), use **B2ms (8 GB)**.
+- **Escala a zero (`minReplicas: 0`)**: quando ninguém está usando (noite, fim de
+  semana), o app **não consome CPU/RAM** e não é cobrado. Sobe sozinho na primeira
+  requisição. Uma VM cobra 24/7 mesmo parada.
+- **Free grant mensal do Container Apps**: as primeiras ~180.000 vCPU-s + 360.000
+  GiB-s + 2 milhões de requisições por mês são **gratuitas** — costuma cobrir boa
+  parte (ou tudo) de um uso interno.
+- **TLS gerenciado grátis**: o Container Apps emite e renova o certificado HTTPS
+  sozinho. **Acaba o Certbot/cron** do plano de VM.
+- **Sem servidor para manter**: zero patch de SO, zero Docker na VM, restart
+  automático, logs centralizados.
+- **ACR Basic** (registry) e **PostgreSQL Burstable B1ms** são os menores SKUs
+  viáveis para esta escala.
+
+> ⚠️ **Réplica única é obrigatória (não é só custo).** O lockout de login, o
+> rate-limit e o cache são **em memória, sem store compartilhado**
+> ([cache.service.ts](../apps/api/src/infra/cache/cache.service.ts)). Por isso o app
+> roda com **`maxReplicas: 1`** — mais de uma réplica fragmentaria o lockout
+> (enfraquecendo a proteção contra força bruta) e deixaria o cache inconsistente.
 
 ---
 
 ## 0. Pré-requisitos
 
-- Conta Azure com permissão de criar recursos e um método de pagamento.
+- Conta Azure com permissão para criar recursos e um método de pagamento.
 - **Azure CLI** instalado e logado: `az login`.
-- Um **domínio** apontável (ex.: `defesacivil.mg.gov.br` ou um subdomínio) para o TLS.
-- Chave SSH local (`ssh-keygen` se não tiver).
+- Extensão de Container Apps: `az extension add --name containerapp --upgrade`.
+- Provedores registrados (uma vez por assinatura):
+  ```bash
+  az provider register --namespace Microsoft.App
+  az provider register --namespace Microsoft.OperationalInsights
+  ```
+- Um **domínio/subdomínio** apontável (ex.: `defesacivil.mg.gov.br` ou
+  `app.defesacivil.mg.gov.br`) para o HTTPS com domínio próprio.
+- **Não** é preciso Docker instalado na sua máquina: as imagens são construídas
+  **na nuvem** com `az acr build`.
 
-Defina variáveis reutilizadas nos comandos (ajuste os valores):
+### Variáveis reutilizadas (ajuste os valores)
 
 ```bash
-# Identificação
+# ---- Identificação --------------------------------------------------------
 export RG="rg-dcmg-prod"
-export LOC="brazilsouth"                 # região (São Paulo)
-export PREFIX="dcmg"                      # prefixo de nomes
+export LOC="brazilsouth"                       # região (São Paulo)
+export PREFIX="dcmg"                            # prefixo de nomes
 
-# Banco
-export PG_SERVER="${PREFIX}-pg"           # nome do servidor PostgreSQL
+# ---- 1. Banco -------------------------------------------------------------
+export PG_SERVER="${PREFIX}-pg"
 export PG_ADMIN="dcmgadmin"
-export PG_PASS="$(openssl rand -base64 24)"   # GUARDE este valor!
+export PG_PASS="$(openssl rand -base64 24)"     # GUARDE este valor!
 export PG_DB="defesacivil"
 
-# Storage (nome 3-24 chars, só minúsculas/números, único globalmente)
+# ---- Blob (apoio): 3-24 chars, só minúsculas/números, único global --------
 export ST_ACCOUNT="${PREFIX}stor$RANDOM"
 export ST_CONTAINER="anexos"
 
-# VM
-export VM_NAME="${PREFIX}-vm"
-export VM_SIZE="Standard_B2s"
-export VM_ADMIN="azureuser"
+# ---- 2. Containers (ACR): 5-50 alfanuméricos, minúsculas, único global ----
+export ACR="${PREFIX}acr$RANDOM"
 
-# Domínio público da aplicação
-export APP_DOMAIN="defesacivil.exemplo.gov.br"
-```
+# ---- 3. Apps (Container Apps) ---------------------------------------------
+export ACA_ENV="${PREFIX}-env"                  # ambiente do Container Apps
+export ACA_APP="${PREFIX}-app"                  # o app (web + api)
+export ACA_IDENTITY="${PREFIX}-aca-id"          # identidade p/ puxar do ACR
 
-```bash
+# ---- Domínio público da aplicação -----------------------------------------
+export APP_DOMAIN="app.defesacivil.exemplo.gov.br"
+
+# Grupo de recursos (guarda-chuva de tudo)
 az group create --name "$RG" --location "$LOC"
 ```
 
+> Dica: cole esse bloco num arquivo `deploy.env` e rode `source deploy.env` a cada
+> sessão de terminal — assim as variáveis (inclusive `PG_PASS`) não se perdem.
+
 ---
 
-## 1. Banco — Azure Database for PostgreSQL (Flexible Server)
+# SERVIÇO 1 — Banco de dados (PostgreSQL gerenciado)
+
+### 1.1 Criar o servidor e o banco
 
 ```bash
-# Cria o servidor (Burstable B1ms: 1 vCPU / 2 GB — suficiente p/ esta escala).
+# Burstable B1ms (1 vCPU / 2 GB) — menor SKU adequado a esta escala.
 az postgres flexible-server create \
   --resource-group "$RG" \
   --name "$PG_SERVER" \
@@ -88,28 +141,35 @@ az postgres flexible-server create \
   --public-access 0.0.0.0 \
   --yes
 
-# Cria o banco da aplicação.
+# Banco da aplicação.
 az postgres flexible-server db create \
   --resource-group "$RG" \
   --server-name "$PG_SERVER" \
   --database-name "$PG_DB"
 ```
 
-> `--public-access 0.0.0.0` cria a regra "Permitir serviços do Azure". Depois de
-> criar a VM, **restrinja** liberando só o IP público dela (passo 4) e remova a
-> regra ampla, ou use VNet/Private Endpoint para o nível mais seguro.
+> `--public-access 0.0.0.0` cria a regra **"Permitir serviços do Azure"**. Como o
+> Container Apps (plano Consumo, sem VNet) sai por **IPs dinâmicos da Azure**, essa
+> é a regra prática — você **mantém** esta regra (diferente do plano de VM, que
+> fixava o IP da VM). Para o nível mais seguro, use um ambiente ACA com **VNet +
+> Private Endpoint** (mais complexo e com custo extra) — ver §"Endurecimento".
 
-A `DATABASE_URL` ficará assim (use no `.env` do passo 5):
+### 1.2 Montar a `DATABASE_URL`
 
+```bash
+export DATABASE_URL="postgresql://${PG_ADMIN}:${PG_PASS}@${PG_SERVER}.postgres.database.azure.com:5432/${PG_DB}?sslmode=require"
+echo "$DATABASE_URL"
 ```
-postgresql://<PG_ADMIN>:<PG_PASS>@<PG_SERVER>.postgres.database.azure.com:5432/<PG_DB>?sslmode=require
-```
 
-> O `?sslmode=require` é **obrigatório** no Azure PostgreSQL.
+> O `?sslmode=require` é **obrigatório** no Azure PostgreSQL. Guarde essa string —
+> ela vira um **secret** do app no Serviço 3.
 
 ---
 
-## 2. Storage — Azure Blob (anexos via SAS)
+# (Apoio) Armazenamento de anexos — Azure Blob
+
+Recurso barato e separado dos 3 serviços principais. O navegador envia/baixa anexos
+**direto** no Blob via URL SAS.
 
 ```bash
 # Conta de storage (Standard LRS é o mais barato e suficiente).
@@ -122,7 +182,7 @@ az storage account create \
   --min-tls-version TLS1_2 \
   --allow-blob-public-access false
 
-# Connection string (GUARDE — vai no .env como AZURE_STORAGE_CONNECTION_STRING).
+# Connection string (GUARDE — vira secret AZURE_STORAGE_CONNECTION_STRING no app).
 export ST_CONN="$(az storage account show-connection-string \
   --resource-group "$RG" --name "$ST_ACCOUNT" --query connectionString -o tsv)"
 
@@ -133,10 +193,275 @@ az storage container create \
   --public-access off
 ```
 
-### CORS do Blob (essencial p/ upload/download direto do navegador)
+O **CORS do Blob** depende do domínio público (definido no Serviço 3); por isso ele
+é configurado lá na etapa de **unificação** (§U.3).
 
-O navegador faz `PUT`/`GET` direto no Blob via SAS, então a conta precisa
-liberar a origem da aplicação:
+---
+
+# SERVIÇO 2 — Containers (Azure Container Registry)
+
+Aqui criamos o **registro de imagens** e construímos as imagens `api` e `web`
+**na nuvem** (não precisa de Docker local).
+
+### 2.1 Criar o registry
+
+```bash
+# Basic é o menor SKU (inclui o ACR Tasks usado pelo `az acr build`).
+az acr create \
+  --resource-group "$RG" \
+  --name "$ACR" \
+  --sku Basic \
+  --admin-enabled false
+```
+
+### 2.2 Construir e publicar as imagens (build na nuvem)
+
+Rode na **raiz do repositório** (onde estão os Dockerfiles em `infra/docker/`):
+
+```bash
+# API (NestJS) — usa infra/docker/api.Dockerfile, contexto = raiz do monorepo.
+az acr build \
+  --registry "$ACR" \
+  --image dcmg-api:latest \
+  --file infra/docker/api.Dockerfile .
+
+# Web (SPA + Nginx) — usa infra/docker/web.Dockerfile.
+az acr build \
+  --registry "$ACR" \
+  --image dcmg-web:latest \
+  --file infra/docker/web.Dockerfile .
+```
+
+> `az acr build` envia o contexto para o ACR Tasks, que **compila no Azure** e já
+> deixa a imagem publicada no registry. Isso elimina a necessidade de uma máquina
+> de build. Cada deploy futuro repete esses dois comandos (ver §"Operação").
+
+Confirme as imagens:
+
+```bash
+az acr repository list --name "$ACR" -o table
+```
+
+---
+
+# SERVIÇO 3 — Apps (Azure Container Apps)
+
+Aqui criamos o **ambiente** do Container Apps e o **app** que roda `web` + `api`
+juntos (padrão *sidecar*: dois containers na mesma réplica, comunicando por
+`localhost`). O Nginx (`web`) é o ingress público e faz proxy de `/api` para o
+container `api` em `127.0.0.1:4000`.
+
+> **Ajuste de código já aplicado neste repositório:** para o proxy funcionar tanto
+> no docker-compose (`api:4000`) quanto no sidecar do ACA (`127.0.0.1:4000`), o
+> Nginx passou a ler o destino de `${API_UPSTREAM}` (renderizado pelo entrypoint).
+> Default = `api:4000`, então **dev e o plano de VM continuam iguais**. No ACA
+> passamos `API_UPSTREAM=127.0.0.1:4000` (já está no YAML abaixo). Por isso é
+> importante ter **rebuildado a imagem `web`** no passo 2.2.
+
+### 3.1 Criar o ambiente do Container Apps
+
+```bash
+# Ambiente "Consumo" (sem custo fixo; cobra só pelo uso dos apps).
+# Cria automaticamente um workspace do Log Analytics para os logs.
+az containerapp env create \
+  --name "$ACA_ENV" \
+  --resource-group "$RG" \
+  --location "$LOC"
+```
+
+### 3.2 Identidade gerenciada para puxar imagens do ACR
+
+Em vez de senha de registry, usamos uma **identidade gerenciada** com permissão
+somente de leitura (`AcrPull`) no ACR:
+
+```bash
+az identity create --resource-group "$RG" --name "$ACA_IDENTITY"
+
+export ACA_ID_RESID="$(az identity show -g "$RG" -n "$ACA_IDENTITY" --query id -o tsv)"
+export ACA_ID_PRINCIPAL="$(az identity show -g "$RG" -n "$ACA_IDENTITY" --query principalId -o tsv)"
+export ACR_RESID="$(az acr show -g "$RG" -n "$ACR" --query id -o tsv)"
+export ACR_SERVER="$(az acr show -g "$RG" -n "$ACR" --query loginServer -o tsv)"
+
+# Concede AcrPull à identidade no escopo do registry.
+az role assignment create \
+  --assignee-object-id "$ACA_ID_PRINCIPAL" \
+  --assignee-principal-type ServicePrincipal \
+  --role AcrPull \
+  --scope "$ACR_RESID"
+```
+
+### 3.3 Gerar os segredos JWT
+
+```bash
+export JWT_ACCESS_SECRET="$(openssl rand -hex 32)"
+export JWT_REFRESH_SECRET="$(openssl rand -hex 32)"   # DISTINTO do de access
+```
+
+### 3.4 Definir o app a partir de um YAML (dois containers)
+
+O app multi-container é descrito num YAML. O bloco abaixo **gera o arquivo** já
+preenchido com suas variáveis (banco, storage, JWT) — confira que `DATABASE_URL`,
+`ST_CONN`, `JWT_*` e `APP_DOMAIN` estão exportados (Serviços 1, 2 e §0).
+
+```bash
+cat > aca-app.yaml <<EOF
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    ${ACA_ID_RESID}: {}
+properties:
+  managedEnvironmentId: $(az containerapp env show -g "$RG" -n "$ACA_ENV" --query id -o tsv)
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 8080
+      transport: auto
+      allowInsecure: false          # força HTTPS no ingress
+      traffic:
+        - latestRevision: true
+          weight: 100
+    registries:
+      - server: ${ACR_SERVER}
+        identity: ${ACA_ID_RESID}
+    secrets:
+      - name: database-url
+        value: "${DATABASE_URL}"
+      - name: jwt-access-secret
+        value: "${JWT_ACCESS_SECRET}"
+      - name: jwt-refresh-secret
+        value: "${JWT_REFRESH_SECRET}"
+      - name: storage-connection-string
+        value: "${ST_CONN}"
+  template:
+    scale:
+      minReplicas: 0               # escala a zero (custo mínimo). Ver nota abaixo.
+      maxReplicas: 1               # OBRIGATÓRIO: estado em memória, sem store compartilhado.
+    containers:
+      # ---- Nginx (ingress público; serve a SPA e faz proxy /api) ----------
+      - name: web
+        image: ${ACR_SERVER}/dcmg-web:latest
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+        env:
+          - name: APP_ENV
+            value: production
+          - name: API_BASE_URL
+            value: /api
+          - name: API_UPSTREAM
+            value: 127.0.0.1:4000   # api na MESMA réplica (sidecar)
+      # ---- API (NestJS; interna, alcançada pelo Nginx via localhost) ------
+      - name: api
+        image: ${ACR_SERVER}/dcmg-api:latest
+        resources:
+          cpu: 1.0
+          memory: 2.0Gi
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: APP_ENV
+            value: production
+          - name: API_PREFIX
+            value: api
+          - name: PORT
+            value: "4000"
+          - name: CORS_ORIGINS
+            value: "https://${APP_DOMAIN}"
+          - name: PUBLIC_BASE_URL
+            value: "https://${APP_DOMAIN}"
+          - name: DATABASE_URL
+            secretRef: database-url
+          - name: JWT_ACCESS_SECRET
+            secretRef: jwt-access-secret
+          - name: JWT_REFRESH_SECRET
+            secretRef: jwt-refresh-secret
+          - name: JWT_ACCESS_TTL
+            value: 900s
+          - name: JWT_REFRESH_TTL
+            value: 7d
+          - name: STORAGE_DRIVER
+            value: azure
+          - name: AZURE_STORAGE_CONNECTION_STRING
+            secretRef: storage-connection-string
+          - name: AZURE_STORAGE_CONTAINER
+            value: anexos
+          - name: MAX_UPLOAD_MB
+            value: "50"
+          - name: RATE_LIMIT_TTL
+            value: "60"
+          - name: RATE_LIMIT_LIMIT
+            value: "120"
+          - name: LOG_LEVEL
+            value: info
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          - type: Readiness
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+EOF
+
+# Cria o app a partir do YAML.
+az containerapp create \
+  --resource-group "$RG" \
+  --name "$ACA_APP" \
+  --yaml aca-app.yaml
+```
+
+> ⚠️ O `aca-app.yaml` contém **segredos** (DATABASE_URL, JWT, storage). Apague-o
+> depois (`rm aca-app.yaml`) ou guarde-o fora do repositório — **nunca** o comite.
+
+#### `minReplicas`: 0 (custo) × 1 (sem cold start)
+
+- **`minReplicas: 0`** (acima) = **menor custo**. O app dorme quando ocioso e sobe
+  na primeira requisição (cold start de ~5–15 s, uma vez, após período sem uso).
+  Seguro aqui: o único job de fundo é uma varredura de cache não-crítica, e os
+  refresh tokens ficam no PostgreSQL (sobrevivem ao "sleep").
+- **`minReplicas: 1`** = sempre quente (sem cold start), porém **cobra 24/7** —
+  fica **mais caro que a VM**. Use só se o cold start incomodar.
+
+Pegue a URL provisória do app (antes do domínio próprio):
+
+```bash
+export APP_FQDN="$(az containerapp show -g "$RG" -n "$ACA_APP" \
+  --query properties.configuration.ingress.fqdn -o tsv)"
+echo "App em: https://$APP_FQDN"
+
+# Health check (sem domínio próprio ainda; CORS não afeta o health):
+curl -i "https://$APP_FQDN/api/health"     # espera 200
+```
+
+---
+
+# UNIFICAÇÃO — ligando os 3 serviços
+
+Os recursos já existem; agora conectamos tudo para virar **uma aplicação pública e
+funcional**.
+
+### U.1 ACR → Apps (imagens)
+
+Já está ligado: no YAML, `registries[].identity` aponta para a identidade com
+`AcrPull` (§3.2), e cada container usa `image: ${ACR_SERVER}/dcmg-*:latest`. O app
+puxa as imagens do **Serviço 2** automaticamente a cada revisão.
+
+### U.2 Apps → Banco (Serviço 1)
+
+Já está ligado: a `DATABASE_URL` (com `?sslmode=require`) entra como **secret** e é
+lida pelo container `api`. A regra **"Permitir serviços do Azure"** (§1.1) deixa o
+Container Apps alcançar o PostgreSQL. **Falta criar o schema** — ver §U.5.
+
+### U.3 Apps → Blob (anexos) + CORS
+
+O `api` usa a connection string (secret) para gerar URLs SAS; o **navegador** fala
+direto com o Blob, então a conta precisa liberar a origem pública:
 
 ```bash
 az storage cors add \
@@ -149,144 +474,59 @@ az storage cors add \
   --connection-string "$ST_CONN"
 ```
 
-> Se for testar localmente apontando para o Blob, acrescente também
-> `http://localhost:3000` em `--origins`.
+> A CSP do Nginx já libera `connect-src ... https://*.blob.core.windows.net`, então
+> o upload/download direto do navegador funciona sem ajustes adicionais.
 
----
+### U.4 Domínio próprio + HTTPS gerenciado (substitui o Certbot)
 
-## 3. Criar a VM (B2s, Ubuntu)
+1. **Pegue os dados de validação:**
 
-```bash
-az vm create \
-  --resource-group "$RG" \
-  --name "$VM_NAME" \
-  --image Ubuntu2204 \
-  --size "$VM_SIZE" \
-  --admin-username "$VM_ADMIN" \
-  --generate-ssh-keys \
-  --public-ip-sku Standard \
-  --os-disk-size-gb 32
+   ```bash
+   export DOMAIN_VERIFICATION_ID="$(az containerapp show -g "$RG" -n "$ACA_APP" \
+     --query properties.customDomainVerificationId -o tsv)"
+   echo "CNAME  ->  $APP_FQDN"
+   echo "TXT asuid.<host>  ->  $DOMAIN_VERIFICATION_ID"
+   ```
 
-# Abre as portas HTTP/HTTPS (a 22/SSH já vem aberta).
-az vm open-port --resource-group "$RG" --name "$VM_NAME" --port 80 --priority 1001
-az vm open-port --resource-group "$RG" --name "$VM_NAME" --port 443 --priority 1002
+2. **No seu DNS**, crie (exemplo para `app.defesacivil.exemplo.gov.br`):
 
-# IP público da VM:
-export VM_IP="$(az vm show -d -g "$RG" -n "$VM_NAME" --query publicIps -o tsv)"
-echo "IP da VM: $VM_IP"
-```
+   ```
+   app                 CNAME   <APP_FQDN>
+   asuid.app           TXT     <DOMAIN_VERIFICATION_ID>
+   ```
 
-### Restringir o banco ao IP da VM (recomendado)
+   Aguarde a propagação (`nslookup $APP_DOMAIN` deve resolver para o `APP_FQDN`).
 
-```bash
-az postgres flexible-server firewall-rule create \
-  --resource-group "$RG" --name "$PG_SERVER" \
-  --rule-name "allow-vm" --start-ip-address "$VM_IP" --end-ip-address "$VM_IP"
-```
+3. **Adicione o hostname e emita o certificado gerenciado (grátis):**
 
----
+   ```bash
+   az containerapp hostname add \
+     --resource-group "$RG" --name "$ACA_APP" --hostname "$APP_DOMAIN"
 
-## 4. DNS
+   az containerapp hostname bind \
+     --resource-group "$RG" --name "$ACA_APP" --hostname "$APP_DOMAIN" \
+     --environment "$ACA_ENV" --validation-method CNAME
+   ```
 
-No seu provedor de DNS, crie um registro **A** apontando o domínio para o IP da VM:
+   O Container Apps emite e **renova sozinho** o certificado TLS. Sem Certbot, sem
+   cron. As variáveis `CORS_ORIGINS`/`PUBLIC_BASE_URL` já apontam para `$APP_DOMAIN`
+   (definidas no YAML), então nada mais a mudar.
 
-```
-defesacivil.exemplo.gov.br.   A   <VM_IP>
-```
+### U.5 Criar o schema e o admin (migrações + seed)
 
-Aguarde a propagação (`nslookup $APP_DOMAIN` deve retornar o IP da VM) antes do TLS.
-
----
-
-## 5. Preparar a VM (Docker + código)
+As migrações criam as tabelas; o seed cria perfis/permissões e o **SUPER_ADMIN**. O
+seed usa `tsx` (devDependency), que **não existe** na imagem de runtime — então rode
+a partir de uma máquina com o **repo + dependências completas**, apontando para o
+banco do Azure:
 
 ```bash
-ssh "$VM_ADMIN@$VM_IP"
-```
-
-Dentro da VM:
-
-```bash
-# Docker Engine + plugin compose (script oficial).
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER
-newgrp docker   # aplica o grupo sem relogar
-
-# Código (use o método que preferir: git clone ou rsync/scp).
-git clone <URL_DO_REPO> dcmg
-cd dcmg
-```
-
-### Criar o `.env` de produção
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-Preencha **no mínimo**:
-
-```dotenv
-NODE_ENV=production
-APP_ENV=production
-
-# Origens permitidas (OBRIGATÓRIO em prod — sem isto a API não sobe)
-CORS_ORIGINS=https://defesacivil.exemplo.gov.br
-PUBLIC_BASE_URL=https://defesacivil.exemplo.gov.br
-
-# Banco gerenciado (passo 1) — com sslmode=require
-DATABASE_URL=postgresql://dcmgadmin:SENHA@dcmg-pg.postgres.database.azure.com:5432/defesacivil?sslmode=require
-# POSTGRES_* não são usados em prod (banco gerenciado); deixe placeholders.
-POSTGRES_USER=na
-POSTGRES_PASSWORD=na
-POSTGRES_DB=na
-
-# JWT — gere dois segredos fortes e DISTINTOS (>=32 chars):
-#   openssl rand -hex 32
-JWT_ACCESS_SECRET=<cole-aqui-32+chars>
-JWT_REFRESH_SECRET=<cole-OUTRO-32+chars>
-JWT_ACCESS_TTL=900s
-JWT_REFRESH_TTL=7d
-
-# Storage Azure Blob (passo 2)
-STORAGE_DRIVER=azure
-AZURE_STORAGE_CONNECTION_STRING=<connection string da conta>
-AZURE_STORAGE_CONTAINER=anexos
-
-MAX_UPLOAD_MB=50
-RATE_LIMIT_TTL=60
-RATE_LIMIT_LIMIT=120
-LOG_LEVEL=info
-
-# SMTP (opcional — notificações e recuperação de senha). Em branco = desabilitado.
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USER=
-SMTP_PASS=
-SMTP_FROM="Defesa Civil MG" <noreply@defesacivil.mg.gov.br>
-```
-
-> `.env` contém segredos — confirme que está no `.gitignore` (está) e nunca o comite.
-
----
-
-## 6. Migrações + usuário admin (banco Azure)
-
-As migrações criam o schema; o seed cria perfis/permissões e o **SUPER_ADMIN**.
-
-O seed usa `tsx` (devDependency), que **não existe na imagem de runtime** (deps de
-prod). Então rode migração + seed a partir de uma máquina com o repo e dependências
-completas, apontando `DATABASE_URL` para o Azure. Pode ser a própria VM (instale
-Node 20 temporariamente) ou seu computador de desenvolvimento.
-
-```bash
-# Numa máquina com Node 20 + repo:
+# Numa máquina com Node 20 + o repositório:
 corepack enable
-corepack pnpm install            # instala devDeps (inclui tsx + prisma CLI)
+corepack pnpm install                      # instala devDeps (tsx + prisma CLI)
 
-export DATABASE_URL="postgresql://dcmgadmin:SENHA@dcmg-pg.postgres.database.azure.com:5432/defesacivil?sslmode=require"
+export DATABASE_URL="postgresql://${PG_ADMIN}:${PG_PASS}@${PG_SERVER}.postgres.database.azure.com:5432/${PG_DB}?sslmode=require"
 
-# Credenciais do admin inicial (defina antes do seed!)
+# Admin inicial (defina ANTES do seed!)
 export SEED_ADMIN_EMAIL="admin@defesacivil.mg.gov.br"
 export SEED_ADMIN_SENHA="<senha-forte-unica>"
 export SEED_ADMIN_CPF="<cpf-sem-pontuacao>"
@@ -296,159 +536,131 @@ corepack pnpm --filter @dcmg/api exec prisma migrate deploy
 corepack pnpm --filter @dcmg/api exec prisma db seed
 ```
 
-> ⚠️ **Segurança:** o seed tem uma senha padrão de DEV (`Defesa@Civil2026!`).
-> SEMPRE defina `SEED_ADMIN_SENHA` em produção, e troque a senha no primeiro login.
+> ⚠️ **Segurança:** o seed tem uma senha padrão de DEV. SEMPRE defina
+> `SEED_ADMIN_SENHA` em produção e troque no primeiro login.
 >
-> Alternativa só para as **migrações** (sem seed), direto pelo container já no ar
-> (passo 7): `docker compose -f docker-compose.prod.yml exec -w /app/apps/api api \
-> /app/node_modules/.bin/prisma migrate deploy`.
+> Alternativa só para **migrações** (sem seed), via container já no ar — exige uma
+> réplica ativa (com `minReplicas: 0`, faça uma requisição antes para acordar o app,
+> ou suba `minReplicas` para 1 temporariamente):
+> ```bash
+> az containerapp exec -g "$RG" -n "$ACA_APP" --container api \
+>   --command "/app/node_modules/.bin/prisma migrate deploy"
+> ```
+
+### U.6 Validar a aplicação unificada
+
+```bash
+curl -i "https://$APP_DOMAIN/api/health"     # 200 via domínio próprio + TLS
+```
+
+Abra `https://$APP_DOMAIN` no navegador: a SPA deve carregar com cadeado válido.
 
 ---
 
-## 7. Build e subida dos containers
+## Pós-deploy (checklist)
 
-Na VM, na raiz do repo:
-
-```bash
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs -f api   # acompanhar o boot
-```
-
-Teste o health (interno, sem TLS ainda):
-
-```bash
-curl -i http://localhost/api/health      # liveness via Nginx
-```
-
-> O `docker-compose.prod.yml` é **standalone** (só `api` + `web`). A API valida o
-> `.env` no boot: se `CORS_ORIGINS` ou os segredos JWT estiverem ausentes/fracos,
-> ela **não sobe** — confira os logs.
-
----
-
-## 8. TLS (HTTPS) com Let's Encrypt
-
-O `web` (Nginx) usa `infra/nginx/nginx.prod.conf`, que espera os certificados em
-`infra/nginx/certs/{fullchain.pem,privkey.pem}`. Gere-os com Certbot:
-
-```bash
-# Pare o web temporariamente para liberar a porta 80 (modo standalone do certbot).
-docker compose -f docker-compose.prod.yml stop web
-
-sudo docker run --rm -p 80:80 \
-  -v "$PWD/infra/nginx/certs:/etc/letsencrypt/live-out" \
-  certbot/certbot certonly --standalone \
-  -d "$APP_DOMAIN" --agree-tos -m "admin@defesacivil.mg.gov.br" --non-interactive
-
-# O certbot grava em /etc/letsencrypt/live/<dominio>/. Copie para o caminho esperado:
-sudo cp /etc/letsencrypt/live/$APP_DOMAIN/fullchain.pem infra/nginx/certs/fullchain.pem
-sudo cp /etc/letsencrypt/live/$APP_DOMAIN/privkey.pem   infra/nginx/certs/privkey.pem
-sudo chown $USER:$USER infra/nginx/certs/*.pem
-
-docker compose -f docker-compose.prod.yml up -d web
-```
-
-> O Nginx roda como usuário não-root (uid 101) — garanta que os `.pem` sejam
-> legíveis por ele (o `chown` acima resolve em geral).
-
-Teste: `https://defesacivil.exemplo.gov.br` deve carregar a SPA com cadeado válido.
-
-### Renovação automática (cron, a cada 60-90 dias)
-
-```bash
-# Exemplo de cron (sudo crontab -e):
-0 3 1 * * cd /home/azureuser/dcmg && docker compose -f docker-compose.prod.yml stop web && docker run --rm -p 80:80 -v "$PWD/infra/nginx/certs:/etc/letsencrypt/live-out" certbot/certbot certonly --standalone -d defesacivil.exemplo.gov.br --agree-tos -m admin@defesacivil.mg.gov.br --non-interactive && cp /etc/letsencrypt/live/defesacivil.exemplo.gov.br/*.pem infra/nginx/certs/ && docker compose -f docker-compose.prod.yml up -d web
-```
-
----
-
-## 8.1 CI/CD (GitHub Actions)
-
-O repositório já inclui dois workflows:
-
-- **`.github/workflows/ci.yml`** — em cada PR/push para `main`/`dev`: ESLint, `prisma
-  generate`/`validate`, build dos contratos, typecheck, testes e build (incl. das
-  imagens Docker).
-- **`.github/workflows/deploy.yml`** — em push para `main` (ou manual): builda e
-  **publica as imagens no GHCR** e faz SSH na VM para `docker compose pull && up -d`
-  + `prisma migrate deploy`. **Não builda na VM** (poupa a B2).
-
-Para o deploy automático funcionar, configure os secrets em **Settings → Secrets
-and variables → Actions**:
-
-| Secret | Descrição |
-|---|---|
-| `DEPLOY_HOST` | IP/host da VM |
-| `DEPLOY_USER` | usuário SSH (ex.: `azureuser`) |
-| `DEPLOY_SSH_KEY` | chave **privada** SSH |
-| `DEPLOY_PORT` | (opcional) porta SSH; padrão 22 |
-| `DEPLOY_PATH` | (opcional) caminho do repo na VM; padrão `$HOME/dcmg` |
-| `GHCR_USER` | usuário GitHub para a VM logar no GHCR |
-| `GHCR_TOKEN` | PAT com escopo `read:packages` (login do Docker na VM) |
-
-> Pré-requisitos na VM: repositório clonado em `DEPLOY_PATH`, `.env` de produção
-> preenchido e certificados TLS presentes. As imagens GHCR podem ser tornadas
-> **públicas** (Packages → Package settings) para dispensar `GHCR_USER`/`GHCR_TOKEN`.
-
-Sem os secrets de deploy, o job é **pulado** (o CI continua verde).
-
-## 9. Pós-deploy (checklist)
-
-- [ ] `https://<dominio>` abre a SPA com TLS válido.
+- [ ] `https://<dominio>` abre a SPA com TLS válido (certificado gerenciado pelo ACA).
 - [ ] Login com o admin do seed; **trocar a senha** imediatamente.
 - [ ] `curl https://<dominio>/api/health` → `200`.
-- [ ] Criar uma submissão de teste e **anexar um arquivo** (valida o fluxo Blob/SAS + CORS).
+- [ ] Criar uma submissão de teste e **anexar um arquivo** (valida Blob/SAS + CORS).
 - [ ] Exportar Excel no painel/submissões (valida o export síncrono).
-- [ ] Conferir os logs sem erros: `docker compose -f docker-compose.prod.yml logs --tail=100`.
-- [ ] Remover a regra de firewall ampla do Postgres (deixar só o IP da VM).
-- [ ] Confirmar backups automáticos do PostgreSQL no portal (retenção padrão 7 dias).
+- [ ] Logs sem erros: `az containerapp logs show -g "$RG" -n "$ACA_APP" --container api --tail 100`.
+- [ ] Confirmar `maxReplicas: 1` (réplica única) e backups automáticos do PostgreSQL no portal.
+- [ ] Apagar/guardar com segurança o `aca-app.yaml` (contém segredos).
 
 ---
 
-## 10. Operação do dia a dia
+## Operação do dia a dia
 
-| Ação | Comando (na raiz do repo, na VM) |
+| Ação | Comando |
 |---|---|
-| Ver logs | `docker compose -f docker-compose.prod.yml logs -f api` |
-| Reiniciar | `docker compose -f docker-compose.prod.yml restart` |
-| Atualizar (deploy) | `git pull && docker compose -f docker-compose.prod.yml up -d --build` |
-| Aplicar nova migração | rodar `prisma migrate deploy` (passo 6) com a `DATABASE_URL` do Azure |
-| Parar tudo | `docker compose -f docker-compose.prod.yml down` |
-| Uso de recursos | `docker stats` |
+| **Atualizar (deploy)** | `az acr build -r "$ACR" -t dcmg-api:latest -f infra/docker/api.Dockerfile .` e idem `dcmg-web`, depois `az containerapp update -g "$RG" -n "$ACA_APP" --container-name api --image "$ACR_SERVER/dcmg-api:latest"` (e idem `web`) |
+| Ver logs (api) | `az containerapp logs show -g "$RG" -n "$ACA_APP" --container api --follow` |
+| Logs do ambiente | Portal → Container App → Monitoring → Log stream / Logs |
+| Reiniciar | Criar nova revisão: `az containerapp update ...` (gera revisão nova) |
+| Alterar uma env/secret | `az containerapp update`/`az containerapp secret set` (gera nova revisão) |
+| Escalar (warm) | `az containerapp update -g "$RG" -n "$ACA_APP" --min-replicas 1 --max-replicas 1` |
+| Nova migração | `prisma migrate deploy` apontando `DATABASE_URL` ao Azure (§U.5) |
+| Status/revisões | `az containerapp revision list -g "$RG" -n "$ACA_APP" -o table` |
 
-> **Refresh tokens** ficam no Postgres (sessões sobrevivem a deploys). **Cache,
-> rate-limit e lockout de login** são em memória → zeram a cada restart do container
-> (comportamento aceitável nesta escala).
+> Como o tag é `latest`, após `az acr build` rode o `az containerapp update --image`
+> para forçar uma **nova revisão** que puxe a imagem recém-publicada. (Para deploys
+> mais rastreáveis, use uma tag por versão/commit em vez de `latest`.)
+
+> **Refresh tokens** ficam no PostgreSQL (sessões sobrevivem a deploys e ao
+> sleep). **Cache, rate-limit e lockout** são em memória → zeram a cada nova
+> revisão ou cold start (aceitável nesta escala e com réplica única).
+
+### CI/CD (GitHub Actions) — opcional
+
+O fluxo manual acima pode virar automático trocando o "SSH na VM" por
+"`az acr build` + `az containerapp update`". Esboço:
+
+```yaml
+# .github/workflows/deploy-aca.yml (esboço)
+- uses: azure/login@v2
+  with: { creds: ${{ secrets.AZURE_CREDENTIALS }} }   # service principal
+- run: az acr build -r $ACR -t dcmg-api:latest -f infra/docker/api.Dockerfile .
+- run: az acr build -r $ACR -t dcmg-web:latest -f infra/docker/web.Dockerfile .
+- run: az containerapp update -g $RG -n $ACA_APP --container-name api --image $ACR_SERVER/dcmg-api:latest
+- run: az containerapp update -g $RG -n $ACA_APP --container-name web --image $ACR_SERVER/dcmg-web:latest
+```
+
+O workflow atual ([deploy.yml](../.github/workflows/deploy.yml)) é específico da VM
+e pode ser mantido para o cenário alternativo, ou substituído por este.
 
 ---
 
-## 11. Custo mensal aproximado (referência)
+## Custo mensal aproximado (referência)
 
-| Recurso | SKU | Ordem de grandeza |
+| Serviço | SKU / config | Ordem de grandeza |
 |---|---|---|
-| VM | B2s (2 vCPU / 4 GB) | ~US$ 30–40 |
-| PostgreSQL | Flexible B1ms + 32 GB | ~US$ 15–25 |
-| Storage | Blob Standard LRS | ~US$ 1–5 (uso baixo) |
-| IP público + egress | — | ~US$ 3–5 |
+| 1. PostgreSQL | Flexible B1ms + 32 GB | ~US$ 15–25 |
+| 2. Container Registry | ACR Basic | ~US$ 5 |
+| 3. Container Apps | 1,25 vCPU / 2,5 GiB, `minReplicas: 0` | ~US$ 0–25 (cai muito com o free grant + sleep) |
+| Blob Storage | Standard LRS | ~US$ 1–5 |
+| Log Analytics | logs do ACA, volume baixo | ~US$ 0–5 |
 
-Total estimado: **~US$ 50–75/mês**. Valores variam por região e uso; confirme na
-calculadora oficial da Azure.
+Total estimado: **~US$ 25–60/mês**, tendendo ao piso com uso intermitente (escala a
+zero). Com `minReplicas: 1` some ~US$ 60–90 do compute sempre ligado — por isso o
+**`minReplicas: 0` é a chave da economia**. Confirme na calculadora oficial da Azure.
+
+> **Comparação com a VM:** a VM B2s custa ~US$ 30–40 **fixos 24/7** + IP + disco e
+> exige manutenção (SO, Docker, Certbot). O Container Apps tende a custar **igual ou
+> menos** com uso real intermitente, **sem servidor para manter** e com **TLS grátis**.
 
 ---
 
-## 12. Troubleshooting
+## Endurecimento (opcional, mais seguro)
 
-- **API não sobe / reinicia em loop**: quase sempre `.env` inválido. Veja
-  `docker compose -f docker-compose.prod.yml logs api` — a validação Zod lista a
-  variável faltante (CORS_ORIGINS, JWT secrets, DATABASE_URL).
-- **Erro de conexão ao banco**: faltou `?sslmode=require`, ou o IP da VM não está
-  liberado no firewall do PostgreSQL.
-- **Upload de anexo falha (CORS)**: revise o `az storage cors add` (origem exata
-  com `https://`, métodos PUT/GET, header `x-ms-blob-type`).
-- **Anexo > 50 MB rejeitado**: é o `MAX_UPLOAD_MB`. Aumente no `.env` e no
-  `client_max_body_size` do Nginx se realmente precisar.
-- **TLS inválido**: confira que `fullchain.pem`/`privkey.pem` existem em
-  `infra/nginx/certs/` e são legíveis pelo usuário `nginx` (uid 101).
-- **Memória apertada na B2**: a API está limitada a 2.5 GB com heap V8 de 1536 MB.
-  Se houver OOM em picos, reduza `NODE_OPTIONS` ou suba para B2ms (8 GB).
+- **Banco sem exposição pública:** ambiente ACA com **VNet** + **Private Endpoint**
+  do PostgreSQL (remove a regra "serviços do Azure"). Custa mais e exige um ambiente
+  ACA dedicado à VNet.
+- **HSTS:** o ingress do ACA serve HTTPS, mas o cabeçalho `Strict-Transport-Security`
+  não é adicionado pela config base do Nginx (só pela `nginx.prod.conf` da VM). Para
+  paridade, dá para incluí-lo em [nginx.conf](../infra/nginx/nginx.conf).
+- **Registry sem identidade gerenciada:** se preferir simplicidade a RBAC, dá para
+  usar `az acr update -n "$ACR" --admin-enabled true` e referenciar usuário/senha
+  como secret no YAML — menos seguro que a identidade gerenciada (§3.2).
+
+---
+
+## Troubleshooting
+
+- **App não sobe / reinicia em loop**: quase sempre env inválido. Veja
+  `az containerapp logs show -g "$RG" -n "$ACA_APP" --container api --tail 200` — a
+  validação Zod aponta a variável faltante (CORS_ORIGINS, JWT, DATABASE_URL).
+- **`/api` dá 502/erro de upstream**: confirme que a imagem `web` foi **rebuildada**
+  (passo 2.2) e que `API_UPSTREAM=127.0.0.1:4000` está no container `web`. No
+  sidecar, os containers se falam por `localhost`, não por nome.
+- **Erro de conexão ao banco**: faltou `?sslmode=require`, ou a regra "serviços do
+  Azure" do PostgreSQL foi removida.
+- **Falha ao puxar imagem (pull)**: a identidade gerenciada não tem `AcrPull`, ou o
+  `registries[].identity`/`server` no YAML está incorreto (§3.2).
+- **Upload de anexo falha (CORS)**: revise o `az storage cors add` (origem exata com
+  `https://`, métodos PUT/GET, header `x-ms-blob-type`).
+- **Domínio não valida**: cheque os registros `CNAME` e `TXT asuid.<host>` e a
+  propagação de DNS antes do `hostname bind`.
+- **Cold start lento incomoda**: suba `--min-replicas 1` (custa mais; ver §3.4).
+- **Lockout/rate-limit "não funcionam" ou inconsistentes**: confirme
+  `maxReplicas: 1` — múltiplas réplicas fragmentam o estado em memória.

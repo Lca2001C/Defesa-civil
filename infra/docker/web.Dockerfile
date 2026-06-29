@@ -46,14 +46,18 @@ RUN apk add --no-cache gettext
 # Bundle estatico da SPA.
 COPY --from=build --chown=nginx:nginx /app/apps/web/dist /usr/share/nginx/html
 
-# Configuracao do servidor / proxy reverso (listen 8080). Em producao, o
-# docker-compose.prod.yml sobrepoe este arquivo por nginx.prod.conf (TLS).
-COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+# Configuracao do servidor / proxy reverso (listen 8080) como TEMPLATE: o
+# entrypoint a renderiza em /etc/nginx/conf.d/default.conf no boot, injetando
+# ${API_UPSTREAM} (destino do proxy /api). Assim a MESMA imagem proxya para
+# `api:4000` (docker-compose) ou `127.0.0.1:4000` (sidecar no Azure Container
+# Apps). Em producao na VM, o docker-compose.prod.yml MONTA nginx.prod.conf
+# (somente leitura) sobre default.conf e o entrypoint pula o render.
+COPY infra/nginx/nginx.conf /etc/nginx/templates/default.conf.template
 
-# Entrypoint: gera o /env.js (runtime config) e inicia o Nginx.
+# Entrypoint: renderiza a config, gera o /env.js (runtime config) e inicia o Nginx.
 COPY infra/nginx/entrypoint.sh /docker-entrypoint-dcmg.sh
 RUN chmod +x /docker-entrypoint-dcmg.sh \
- && chown -R nginx:nginx /usr/share/nginx/html
+ && chown -R nginx:nginx /usr/share/nginx/html /etc/nginx/conf.d
 
 # Volta ao usuario nao-root para a execucao do container.
 USER nginx
