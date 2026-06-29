@@ -7,7 +7,14 @@ dist
 build
 **/dist
 **/build
+# IMPORTANTE: "*.tsbuildinfo" so casa a raiz (no .dockerignore o * nao cruza /).
+# Os buildinfo aninhados (ex.: packages/contracts/tsconfig.tsbuildinfo) precisam
+# de "**/" senao sao copiados para o contexto. Como o dist aninhado e excluido
+# acima, um buildinfo obsoleto faria o tsc (composite/incremental) achar que esta
+# tudo atualizado e NAO emitir o dist/index.d.ts — quebrando o build da API com
+# "Cannot find module '@dcmg/contracts'".
 *.tsbuildinfo
+**/*.tsbuildinfo
 
 # Variaveis de ambiente e segredos
 .env

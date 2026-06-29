@@ -39,6 +39,11 @@ COPY . .
 # Instala TODAS as dependencias (incl. dev) para conseguir compilar.
 RUN pnpm install --frozen-lockfile
 
+# Gera o Prisma Client ANTES do build: os tipos de @prisma/client sao
+# importados por dezenas de arquivos da API; sem o client gerado o "nest build"
+# (tsc) falha com varios erros de tipo. Schema em apps/api/prisma/schema.prisma.
+RUN pnpm --filter @dcmg/api exec prisma generate
+
 # Constroi a API e suas dependencias internas (contracts primeiro).
 # A sintaxe "@dcmg/api..." inclui as dependencias do workspace na ordem certa.
 RUN pnpm --filter @dcmg/api... run build
@@ -47,8 +52,9 @@ RUN pnpm --filter @dcmg/api... run build
 # Com node-linker=hoisted o resultado sao arquivos reais em node_modules.
 RUN pnpm install --frozen-lockfile --prod
 
-# Gera o Prisma Client APOS o prune (prisma e dependencia de producao), para
-# garantir que .prisma/client exista no node_modules que vai para o runtime.
+# Regenera o Prisma Client APOS o prune (prisma e dependencia de producao),
+# para garantir que .prisma/client exista no node_modules que vai para o
+# runtime — o prune pode remover/sobrescrever o client gerado antes do build.
 RUN pnpm --filter @dcmg/api exec prisma generate
 
 # ----------------------------------------------------------------------------
