@@ -1,0 +1,83 @@
+properties:
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 8080
+      transport: auto
+      allowInsecure: false
+      traffic:
+        - latestRevision: true
+          weight: 100
+  template:
+    scale:
+      minReplicas: 0
+      maxReplicas: 1
+    containers:
+      - name: dcmg-web
+        image: defesacivil.azurecr.io/dcmg-web:latest
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+        env:
+          - name: APP_ENV
+            value: production
+          - name: API_BASE_URL
+            value: /api
+          - name: API_UPSTREAM
+            value: 127.0.0.1:4000
+      - name: dcmg-api
+        image: defesacivil.azurecr.io/dcmg-api:latest
+        resources:
+          cpu: 1.0
+          memory: 2.0Gi
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: APP_ENV
+            value: production
+          - name: API_PREFIX
+            value: api
+          - name: PORT
+            value: "4000"
+          - name: CORS_ORIGINS
+            value: "https://app.defesacivil.mg.gov.br"
+          - name: PUBLIC_BASE_URL
+            value: "https://app.defesacivil.mg.gov.br"
+          - name: DATABASE_URL
+            secretRef: database-url
+          - name: JWT_ACCESS_SECRET
+            secretRef: jwt-access-secret
+          - name: JWT_REFRESH_SECRET
+            secretRef: jwt-refresh-secret
+          - name: JWT_ACCESS_TTL
+            value: 900s
+          - name: JWT_REFRESH_TTL
+            value: 7d
+          - name: STORAGE_DRIVER
+            value: azure
+          - name: AZURE_STORAGE_CONNECTION_STRING
+            secretRef: storage-connection-string
+          - name: AZURE_STORAGE_CONTAINER
+            value: anexos
+          - name: MAX_UPLOAD_MB
+            value: "50"
+          - name: RATE_LIMIT_TTL
+            value: "60"
+          - name: RATE_LIMIT_LIMIT
+            value: "120"
+          - name: LOG_LEVEL
+            value: info
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          - type: Readiness
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 10
