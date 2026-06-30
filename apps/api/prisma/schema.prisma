@@ -21,7 +21,12 @@ datasource db {
 
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
+  // Runtime de producao = node:20-alpine (musl, OpenSSL 3 / libssl.so.3), entao
+  // o engine correto e "linux-musl-openssl-3.0.x". O target "linux-musl" puro
+  // foi REMOVIDO de proposito: ele e a variante legada OpenSSL 1.1 (precisa de
+  // libssl.so.1.1, ausente no Alpine atual) e era ele que o Prisma carregava no
+  // boot, causando o crash do PrismaService. "native" cobre o dev local.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 // ============================ ENUMS ==========================================

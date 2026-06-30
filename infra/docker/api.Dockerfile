@@ -1,20 +1,15 @@
 # =============================================================================
-# API (NestJS) — imagem multi-stage
+# API (NestJS) — imagem multi-stage (Alpine no build E no runtime)
 # -----------------------------------------------------------------------------
-# Stage 1 (build): instala dependencias do monorepo, constroi @dcmg/contracts
-#                  antes de @dcmg/api (ordem topologica via "..."), remove as
-#                  devDependencies e gera o Prisma Client.
-# Stage 2 (runtime): imagem enxuta, usuario nao-root, com a arvore ja pronta.
+# Build e runtime usam a MESMA libc (musl/Alpine) de proposito: ha modulos
+# nativos (ex.: argon2) cujo .node e especifico da libc. Compilar em musl e
+# rodar em glibc (Debian), ou vice-versa, quebra o carregamento do binario.
 #
-# Observacao: o repo usa node-linker=hoisted (.npmrc), entao node_modules sao
-# arquivos REAIS (sem o virtual store .pnpm). Por isso a arvore /app pode ser
-# copiada entre stages sem symlinks quebradas. Os pacotes de workspace
-# (@dcmg/api, @dcmg/contracts) permanecem como symlinks relativos validos
-# dentro de /app, que e copiado por completo.
-#
-# TODO (otimizacao futura): trocar a copia integral de /app por "pnpm deploy
-# --filter @dcmg/api --prod" para reduzir o tamanho da imagem (hoje ela carrega
-# tambem as deps de producao dos demais workspaces).
+# Prisma: o Query Engine e selecionado por libc + versao do OpenSSL. O
+# node:20-alpine atual usa OpenSSL 3 (libssl.so.3). Por isso o schema fixa
+# binaryTargets no engine "linux-musl-openssl-3.0.x" e NAO embarca mais o
+# engine legado "linux-musl" (OpenSSL 1.1) — era ele, exigindo a libssl.so.1.1
+# (ausente no Alpine recente), que crashava o boot do PrismaService.
 # =============================================================================
 
 # ----------------------------------------------------------------------------
@@ -25,36 +20,30 @@ FROM node:20-alpine AS build
 # Habilita o pnpm via corepack (gestor de pacotes do monorepo).
 RUN corepack enable
 
-# Toolchain para compilar módulos nativos (ex.: argon2) quando não há prebuild
-# para a plataforma/libc — necessário em ARM64/musl (Oracle Ampere A1 + Alpine).
-# Fica apenas no stage de build; não vai para a imagem de runtime.
+# Toolchain para compilar modulos nativos (ex.: argon2) quando nao ha prebuild
+# para a plataforma/libc. Fica apenas no stage de build; nao vai para o runtime.
 RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
 # Copia todo o repositorio (contexto de build = raiz do monorepo).
-# O pnpm-lock.yaml versionado garante builds reproduziveis (--frozen-lockfile).
 COPY . .
 
 # Instala TODAS as dependencias (incl. dev) para conseguir compilar.
 RUN pnpm install --frozen-lockfile
 
-# Gera o Prisma Client ANTES do build: os tipos de @prisma/client sao
-# importados por dezenas de arquivos da API; sem o client gerado o "nest build"
-# (tsc) falha com varios erros de tipo. Schema em apps/api/prisma/schema.prisma.
+# Gera o Prisma Client ANTES do build: os tipos de @prisma/client sao importados
+# por dezenas de arquivos da API; sem o client gerado o "nest build" (tsc) falha.
 RUN pnpm --filter @dcmg/api exec prisma generate
 
 # Constroi a API e suas dependencias internas (contracts primeiro).
-# A sintaxe "@dcmg/api..." inclui as dependencias do workspace na ordem certa.
 RUN pnpm --filter @dcmg/api... run build
 
 # Remove as devDependencies, mantendo apenas as de producao.
-# Com node-linker=hoisted o resultado sao arquivos reais em node_modules.
 RUN pnpm install --frozen-lockfile --prod
 
-# Regenera o Prisma Client APOS o prune (prisma e dependencia de producao),
-# para garantir que .prisma/client exista no node_modules que vai para o
-# runtime — o prune pode remover/sobrescrever o client gerado antes do build.
+# Regenera o Prisma Client APOS o prune (prisma e dep de producao), garantindo
+# que .prisma/client exista no node_modules que vai para o runtime.
 RUN pnpm --filter @dcmg/api exec prisma generate
 
 # ----------------------------------------------------------------------------
@@ -62,20 +51,23 @@ RUN pnpm --filter @dcmg/api exec prisma generate
 # ----------------------------------------------------------------------------
 FROM node:20-alpine AS runtime
 
+# OpenSSL 3 para o Prisma Query Engine. O node:20-alpine ja inclui a libssl.so.3;
+# instalar o pacote "openssl" garante que o Prisma detecte a versao do OpenSSL e
+# selecione o engine linux-musl-openssl-3.0.x. Substitui o paliativo fragil de
+# baixar compat-openssl11 (libssl.so.1.1) do repo legado v3.18 do Alpine.
+RUN apk add --no-cache openssl
+
 ENV NODE_ENV=production
-# Limita o heap do V8 para caber com folga no limite de memória do container
-# (api ~2.5G na B2s). Evita OOM-kill antes de o GC rodar. Ajuste junto com o
-# limite de memória do serviço em docker-compose.prod.yml.
+# Limita o heap do V8 para caber com folga no limite de memoria do container.
 ENV NODE_OPTIONS="--max-old-space-size=1536"
 
 WORKDIR /app
 
-# Copia a arvore ja construida e com dependencias de producao:
-# node_modules (hoisted, reais), apps/api/dist, prisma, e packages/contracts/dist.
+# Copia a arvore ja construida e com dependencias de producao.
 # A imagem node:20-alpine ja inclui o usuario/grupo "node" (nao-root).
 COPY --from=build --chown=node:node /app /app
 
-# Diretorio de uploads (montado como volume em runtime via compose).
+# Diretorio de uploads (montado como volume em runtime, se aplicavel).
 RUN mkdir -p /data/uploads && chown -R node:node /data/uploads
 
 USER node
