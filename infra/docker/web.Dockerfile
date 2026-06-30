@@ -56,7 +56,12 @@ COPY infra/nginx/nginx.conf /etc/nginx/templates/default.conf.template
 
 # Entrypoint: renderiza a config, gera o /env.js (runtime config) e inicia o Nginx.
 COPY infra/nginx/entrypoint.sh /docker-entrypoint-dcmg.sh
-RUN chmod +x /docker-entrypoint-dcmg.sh \
+# Remove CR (\r) caso o script chegue com fim de linha CRLF (Windows): senao o
+# shebang vira "#!/bin/sh\r" e o container falha com "exec ...: no such file or
+# directory". O .gitattributes ja forca LF na fonte; este sed e defesa extra
+# para builds feitos a partir de qualquer host (ex.: az acr build no Windows).
+RUN sed -i 's/\r$//' /docker-entrypoint-dcmg.sh \
+ && chmod +x /docker-entrypoint-dcmg.sh \
  && chown -R nginx:nginx /usr/share/nginx/html /etc/nginx/conf.d
 
 # Volta ao usuario nao-root para a execucao do container.

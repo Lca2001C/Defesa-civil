@@ -1,0 +1,12 @@
+# =============================================================================
+# Normalizacao de fim de linha (EOL).
+# -----------------------------------------------------------------------------
+# Com core.autocrlf=true (padrao no Git do Windows) e SEM regras aqui, arquivos
+# .sh seriam gravados com CRLF no checkout. Em containers Linux/Alpine isso
+# QUEBRA o shebang: o kernel le "#!/bin/sh\r" e o processo falha com
+# 'exec ...: no such file or directory'. Forcamos LF nos scripts shell para que
+# rodem corretamente em qualquer SO (esta regra sobrepoe o core.autocrlf).
+# =============================================================================
+
+# Scripts shell SEMPRE em LF (executados em containers Linux).
+*.sh text eol=lf
