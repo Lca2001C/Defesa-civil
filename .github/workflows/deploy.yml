@@ -1,22 +1,56 @@
-name: Deploy (GHCR + Azure VM)
+name: Deploy (Azure Container Apps)
 
-# Entrega contínua:
-#   1) Builda as imagens api/web nos runners do GitHub e publica no GHCR
-#      (não builda na VM B2 — poupa CPU/RAM da instância).
-#   2) Faz SSH na VM Azure, puxa as imagens e sobe (docker compose pull + up -d),
-#      aplicando as migrations Prisma.
+# CI/CD para o Azure Container Apps (ACA) — substitui o antigo deploy na VM.
 #
-# Dispara no push para main e manualmente (workflow_dispatch).
+# Fluxo:
+#   1) az acr build: constrói `dcmg-api` e `dcmg-web` NA NUVEM (ACR Tasks), sem
+#      Docker no runner. Tag = git SHA (imutável/rastreável) + "latest".
+#   2) az containerapp update --container-name <c> --image <img>: troca APENAS a
+#      imagem de cada container (nova revisão que puxa a imagem nova).
+#      Usamos --image de propósito (NÃO --yaml): o `--yaml` trata o template como
+#      REPLACE e a serialização do CLI pode dropar configuration.registries[].identity,
+#      quebrando o AcrPull (microsoft/azure-container-apps#524). O `--image` não
+#      toca em secrets/identidade/registries/env — só na imagem. (Efeito: 2
+#      revisões por deploy; em Single mode o cutover é sem downtime.)
 #
-# Secrets necessários (Settings → Secrets and variables → Actions):
-#   DEPLOY_HOST     IP/host da VM
-#   DEPLOY_USER     usuário SSH (ex.: azureuser)
-#   DEPLOY_SSH_KEY  chave PRIVADA SSH
-#   DEPLOY_PORT     (opcional) porta SSH; padrão 22
-#   DEPLOY_PATH     (opcional) caminho do repo na VM; padrão $HOME/dcmg
-#   GHCR_USER       usuário GitHub p/ a VM logar no GHCR (ex.: Lca2001C)
-#   GHCR_TOKEN      PAT com escopo read:packages (login do docker na VM)
-# Sem DEPLOY_HOST, o job de deploy é PULADO (não falha).
+# AUTENTICAÇÃO: OIDC (federated credentials) — sem senha de service principal.
+#
+# Setup no Azure (uma vez só):
+#   SUB_ID=$(az account show --query id -o tsv)
+#   TENANT_ID=$(az account show --query tenantId -o tsv)
+#   # 1) App registration + SP com Contributor no RG (roda o containerapp update):
+#   APP_ID=$(az ad sp create-for-rbac --name "gh-dcmg-deploy" \
+#     --role Contributor \
+#     --scopes /subscriptions/$SUB_ID/resourceGroups/rg-dcmg-prod \
+#     --query appId -o tsv)
+#   # 2) AcrPush no registry (push do az acr build):
+#   az role assignment create --assignee "$APP_ID" --role AcrPush \
+#     --scope $(az acr show -n defesacivil --query id -o tsv)
+#   # 3) Federated credential ligando o SP a este repo/branch (cobre push e
+#   #    workflow_dispatch na main):
+#   az ad app federated-credential create --id "$APP_ID" --parameters '{
+#     "name":"gh-main",
+#     "issuer":"https://token.actions.githubusercontent.com",
+#     "subject":"repo:Lca2001C/Defesa-civil:ref:refs/heads/main",
+#     "audiences":["api://AzureADTokenExchange"]
+#   }'
+#
+# Secrets do GitHub (Settings > Secrets and variables > Actions) — são IDs, não
+# senhas, mas ficam como secret por convenção:
+#   AZURE_CLIENT_ID        = $APP_ID
+#   AZURE_TENANT_ID        = $TENANT_ID
+#   AZURE_SUBSCRIPTION_ID  = $SUB_ID
+# Sem AZURE_CLIENT_ID, o deploy é PULADO (não falha).
+#
+# Notas:
+#  • ACR em modo ABAC (az acr show -n defesacivil --query roleAssignmentMode ==
+#    "rbac-abac"): AcrPush não basta — use "Container Registry Repository Writer"
+#    + "Container Registry Repository Catalog Lister" e adicione
+#    --source-acr-auth-id [caller] nos az acr build.
+#  • Deploy a partir de outra branch: crie credenciais federadas adicionais com o
+#    subject correspondente (repo:Lca2001C/Defesa-civil:ref:refs/heads/<branch>).
+#  • Migrações de banco NÃO rodam aqui (os runners do GitHub não são "serviços do
+#    Azure" no firewall do PostgreSQL). Ver docs/DEPLOY-AZURE.md §U.5.
 
 on:
   push:
@@ -24,112 +58,84 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-prod
+  group: deploy-aca-prod
   cancel-in-progress: false
 
+# Necessário para o OIDC (azure/login busca um token federado).
+permissions:
+  id-token: write
+  contents: read
+
 env:
-  IMAGE_API: ghcr.io/lca2001c/defesa-civil-api
-  IMAGE_WEB: ghcr.io/lca2001c/defesa-civil-web
+  AZ_RG: rg-dcmg-prod
+  ACA_APP: dcmg-app
+  ACR_NAME: defesacivil
+  ACR_LOGIN_SERVER: defesacivil.azurecr.io
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Build + push das imagens para o GitHub Container Registry (GHCR)
-  # ---------------------------------------------------------------------------
-  build-push:
-    name: Build & push imagens (GHCR)
+  deploy:
+    name: Build (ACR) + Deploy (ACA)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login no GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & push — API
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: infra/docker/api.Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE_API }}:latest
-            ${{ env.IMAGE_API }}:${{ github.sha }}
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,scope=api,mode=max
-
-      - name: Build & push — Web
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: infra/docker/web.Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE_WEB }}:latest
-            ${{ env.IMAGE_WEB }}:${{ github.sha }}
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,scope=web,mode=max
-
-  # ---------------------------------------------------------------------------
-  # Deploy na VM Azure: puxa as imagens e sobe (sem build na VM)
-  # ---------------------------------------------------------------------------
-  deploy:
-    name: Deploy na VM (pull + up)
-    needs: build-push
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Verificar secrets de deploy
+      - name: Verificar credencial de deploy
         id: guard
+        env:
+          # Compara sem expor o valor: resulta em "true"/"false".
+          HAS_CREDS: ${{ secrets.AZURE_CLIENT_ID != '' }}
         run: |
-          if [ -n "${{ secrets.DEPLOY_HOST }}" ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Secrets de deploy ausentes (DEPLOY_HOST). Pulando o deploy."
+          echo "ready=${HAS_CREDS}" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_CREDS" != "true" ]; then
+            echo "::warning::AZURE_CLIENT_ID ausente — deploy no ACA pulado (sem falhar)."
           fi
 
-      - name: Deploy via SSH
+      - name: Login no Azure (OIDC)
         if: steps.guard.outputs.ready == 'true'
-        uses: appleboy/ssh-action@v1.2.0
+        uses: azure/login@v2
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          command_timeout: 15m
-          envs: DEPLOY_PATH,GHCR_USER,GHCR_TOKEN
-          script: |
-            set -e
-            # Login no GHCR para puxar imagens privadas (se públicas, é opcional).
-            if [ -n "${GHCR_TOKEN}" ]; then
-              echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
-            fi
-            cd "${DEPLOY_PATH:-$HOME/dcmg}"
-            echo "==> Atualizando arquivos de deploy (compose, migrations)"
-            git fetch --all --prune
-            git checkout main
-            git pull --ff-only
-            echo "==> Puxando imagens do GHCR e subindo"
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
-            echo "==> Aplicando migrations Prisma"
-            docker compose -f docker-compose.prod.yml exec -T -w /app/apps/api api \
-              /app/node_modules/.bin/prisma migrate deploy
-            echo "==> Limpeza"
-            docker image prune -f
-            docker compose -f docker-compose.prod.yml ps
-        env:
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          GHCR_USER: ${{ secrets.GHCR_USER }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Garantir a extensão containerapp
+        if: steps.guard.outputs.ready == 'true'
+        run: az extension add --name containerapp --upgrade --only-show-errors
+
+      - name: Build das imagens no ACR (api + web)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_SHA}"
+          echo "Tag do deploy: ${TAG}"
+          az acr build --registry "${ACR_NAME}" \
+            --image "dcmg-api:${TAG}" --image "dcmg-api:latest" \
+            --file infra/docker/api.Dockerfile .
+          az acr build --registry "${ACR_NAME}" \
+            --image "dcmg-web:${TAG}" --image "dcmg-web:latest" \
+            --file infra/docker/web.Dockerfile .
+
+      - name: Deploy — atualiza a imagem de cada container (não toca em config)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_SHA}"
+          az containerapp update \
+            --resource-group "${AZ_RG}" --name "${ACA_APP}" \
+            --container-name dcmg-api \
+            --image "${ACR_LOGIN_SERVER}/dcmg-api:${TAG}"
+          az containerapp update \
+            --resource-group "${AZ_RG}" --name "${ACA_APP}" \
+            --container-name dcmg-web \
+            --image "${ACR_LOGIN_SERVER}/dcmg-web:${TAG}"
+
+      - name: Validar (revisões + AcrPull/identidade preservados)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          az containerapp revision list -g "${AZ_RG}" -n "${ACA_APP}" -o table
+          echo "----- identidade dos registries (deve continuar preenchida) -----"
+          az containerapp show -g "${AZ_RG}" -n "${ACA_APP}" \
+            --query "properties.configuration.registries" -o json

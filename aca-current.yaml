@@ -11,11 +11,11 @@ properties:
           weight: 100
   template:
     scale:
-      minReplicas: 0
+      minReplicas: 1
       maxReplicas: 1
     containers:
       - name: dcmg-web
-        image: defesacivil.azurecr.io/dcmg-web:latest
+        image: defesacivil.azurecr.io/dcmg-web:v20260701
         resources:
           cpu: 0.25
           memory: 0.5Gi
@@ -27,7 +27,7 @@ properties:
           - name: API_UPSTREAM
             value: 127.0.0.1:4000
       - name: dcmg-api
-        image: defesacivil.azurecr.io/dcmg-api:latest
+        image: defesacivil.azurecr.io/dcmg-api:v20260630
         resources:
           cpu: 1.0
           memory: 2.0Gi
