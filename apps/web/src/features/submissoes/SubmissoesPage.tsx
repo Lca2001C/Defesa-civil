@@ -27,7 +27,9 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -71,6 +73,8 @@ export default function SubmissoesPage() {
   const navigate = useNavigate();
   const { usuario } = useAuth();
   const qc = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const podeCriar = usuario?.permissoes.includes("submissoes.criar") ?? false;
   const podeExportar = usuario?.permissoes.includes("relatorios.exportar") ?? false;
   const isAdmin = (usuario?.perfilNivel ?? 0) >= 80;
@@ -198,7 +202,7 @@ export default function SubmissoesPage() {
             {data ? `${data.total} registro(s)` : "Carregando…"}
           </Typography>
         </Box>
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+        <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
           {podeExportar && (
             <Button
               variant="outlined"
@@ -232,7 +236,7 @@ export default function SubmissoesPage() {
             placeholder="Protocolo, município, respondente ou CPF"
             value={buscaInput}
             onChange={(e) => setBuscaInput(e.target.value)}
-            sx={{ minWidth: 280, flex: 1 }}
+            sx={{ flex: "1 1 280px", minWidth: { xs: "100%", sm: 280 } }}
           />
           <Autocomplete
             size="small"
@@ -242,9 +246,9 @@ export default function SubmissoesPage() {
             value={municipios.find((m) => String(m.id) === municipioId) ?? null}
             onChange={(_, opcao) => setMunicipioId(opcao ? String(opcao.id) : "")}
             renderInput={(params) => <TextField {...params} label="Município" />}
-            sx={{ minWidth: 240 }}
+            sx={{ flex: "1 1 240px", minWidth: { xs: "100%", sm: 240 } }}
           />
-          <FormControl size="small" sx={{ minWidth: 180 }}>
+          <FormControl size="small" sx={{ flex: "1 1 180px", minWidth: { xs: "100%", sm: 180 } }}>
             <InputLabel>Competência</InputLabel>
             <Select
               value={competenciaId}
@@ -259,7 +263,7 @@ export default function SubmissoesPage() {
               ))}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 170 }}>
+          <FormControl size="small" sx={{ flex: "1 1 170px", minWidth: { xs: "100%", sm: 170 } }}>
             <InputLabel>Status</InputLabel>
             <Select value={statusFiltro} label="Status" onChange={(e) => setStatusFiltro(e.target.value)}>
               <MenuItem value="">Todos</MenuItem>
@@ -277,7 +281,7 @@ export default function SubmissoesPage() {
             InputLabelProps={{ shrink: true }}
             value={dataInicio}
             onChange={(e) => setDataInicio(e.target.value)}
-            sx={{ width: 160 }}
+            sx={{ flex: "1 1 140px", minWidth: { xs: "calc(50% - 6px)", sm: 160 } }}
           />
           <TextField
             size="small"
@@ -286,10 +290,15 @@ export default function SubmissoesPage() {
             InputLabelProps={{ shrink: true }}
             value={dataFim}
             onChange={(e) => setDataFim(e.target.value)}
-            sx={{ width: 160 }}
+            sx={{ flex: "1 1 140px", minWidth: { xs: "calc(50% - 6px)", sm: 160 } }}
           />
           {algumFiltroAtivo && (
-            <Button size="small" startIcon={<ClearIcon />} onClick={limparFiltros}>
+            <Button
+              size="small"
+              startIcon={<ClearIcon />}
+              onClick={limparFiltros}
+              sx={{ width: { xs: "100%", sm: "auto" } }}
+            >
               Limpar
             </Button>
           )}
@@ -312,8 +321,8 @@ export default function SubmissoesPage() {
       {!isLoading && items.length > 0 && (
         <Paper variant="outlined">
           {isFetching && <LinearProgress />}
-          <TableContainer>
-            <Table size="small" stickyHeader>
+          <TableContainer sx={{ width: "100%", overflowX: "auto" }}>
+            <Table size="small" stickyHeader sx={{ minWidth: 720 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Protocolo</TableCell>
@@ -420,6 +429,7 @@ export default function SubmissoesPage() {
           setExcluindo(null);
           setErroExclusao(null);
         }}
+        fullScreen={isMobile}
         maxWidth="xs"
         fullWidth
       >

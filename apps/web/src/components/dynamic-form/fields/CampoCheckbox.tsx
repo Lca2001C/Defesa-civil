@@ -17,7 +17,7 @@ export function CampoCheckbox({ campo, field, error }: FieldProps) {
   }
 
   return (
-    <FormControl error={!!error} required={campo.obrigatorio} component="fieldset">
+    <FormControl error={!!error} required={campo.obrigatorio} component="fieldset" fullWidth sx={{ minWidth: 0 }}>
       <FormLabel sx={{ fontSize: 14 }}>{campo.rotulo}</FormLabel>
       <FormGroup>
         {campo.opcoes?.map((o) => (

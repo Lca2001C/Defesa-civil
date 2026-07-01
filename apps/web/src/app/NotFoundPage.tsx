@@ -12,14 +12,19 @@ export default function NotFoundPage() {
         justifyContent: "center",
       }}
     >
-      <Stack spacing={2} alignItems="center">
+      <Stack spacing={2} alignItems="center" sx={{ maxWidth: "100%", textAlign: "center" }}>
         <Typography variant="h3" sx={{ fontWeight: 700 }}>
           404
         </Typography>
         <Typography variant="body1" color="text.secondary">
           A pagina solicitada nao foi encontrada.
         </Typography>
-        <Button component={RouterLink} to="/" variant="contained">
+        <Button
+          component={RouterLink}
+          to="/"
+          variant="contained"
+          sx={{ width: { xs: "100%", sm: "auto" } }}
+        >
           Voltar ao Painel
         </Button>
       </Stack>

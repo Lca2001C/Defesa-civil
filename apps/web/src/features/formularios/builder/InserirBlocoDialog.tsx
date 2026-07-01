@@ -9,7 +9,9 @@ import {
   CircularProgress,
   Box,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 import { useQuery } from "@tanstack/react-query";
 import type { ConteudoBloco, Pergunta } from "@dcmg/contracts";
@@ -37,6 +39,8 @@ function codigoUnico(base: string): string {
 }
 
 export function InserirBlocoDialog({ aberto, onFechar, onInserir }: Props) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { data: blocos, isLoading } = useQuery({
     queryKey: ["blocos"],
     queryFn: () => api.get<Bloco[]>("/formularios/blocos"),
@@ -54,7 +58,7 @@ export function InserirBlocoDialog({ aberto, onFechar, onInserir }: Props) {
   }
 
   return (
-    <Dialog open={aberto} onClose={onFechar} maxWidth="sm" fullWidth>
+    <Dialog open={aberto} onClose={onFechar} maxWidth="sm" fullWidth fullScreen={isMobile}>
       <DialogTitle>
         Inserir bloco reutilizável
         <IconButton onClick={onFechar} sx={{ position: "absolute", right: 8, top: 8 }}>

@@ -88,7 +88,7 @@ export function SortableSecao({
             onChange={(e) => onChange({ ...secao, titulo: e.target.value })}
             variant="standard"
             placeholder="Título da seção"
-            sx={{ flex: 1 }}
+            sx={{ flex: 1, minWidth: 0 }}
             InputProps={{ style: { fontSize: 18, fontWeight: 600 } }}
           />
           {outrasPaginas.length > 0 && (
@@ -148,7 +148,14 @@ export function SortableSecao({
           )}
         </Box>
 
-        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1}
+          alignItems={{ xs: "stretch", sm: "center" }}
+          flexWrap="wrap"
+          useFlexGap
+          sx={{ mt: 1 }}
+        >
           <Button startIcon={<AddIcon />} size="small" onClick={(e) => setMenuEl(e.currentTarget)}>
             Adicionar pergunta
           </Button>

@@ -113,19 +113,37 @@ export function DynamicForm({ schema, onSubmit, carregando = false, defaultValue
         );
       })}
 
-      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+      <Stack
+        direction={{ xs: "column-reverse", sm: "row" }}
+        spacing={1}
+        sx={{ mt: 2 }}
+      >
         {paginaAtual > 0 && (
-          <Button variant="outlined" onClick={() => setPaginaAtual((p) => Math.max(p - 1, 0))}>
+          <Button
+            variant="outlined"
+            onClick={() => setPaginaAtual((p) => Math.max(p - 1, 0))}
+            sx={{ width: { xs: "100%", sm: "auto" } }}
+          >
             Voltar
           </Button>
         )}
         {!ehUltima && (
-          <Button variant="contained" onClick={avancar}>
+          <Button
+            variant="contained"
+            onClick={avancar}
+            sx={{ width: { xs: "100%", sm: "auto" } }}
+          >
             Avançar
           </Button>
         )}
         {ehUltima && (
-          <Button type="submit" variant="contained" disabled={carregando} size="large">
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={carregando}
+            size="large"
+            sx={{ width: { xs: "100%", sm: "auto" } }}
+          >
             {carregando ? (
               <CircularProgress size={22} color="inherit" />
             ) : preview ? (

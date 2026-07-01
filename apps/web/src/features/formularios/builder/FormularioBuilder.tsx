@@ -210,7 +210,14 @@ export function FormularioBuilder({ schemaInicial, salvando, erro, onSalvar }: P
     <Box>
       {erro && <Alert severity="error" sx={{ mb: 2 }}>{erro}</Alert>}
 
-      <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mb: 2 }}>
+      <Stack
+        direction="row"
+        justifyContent="flex-end"
+        spacing={1}
+        flexWrap="wrap"
+        useFlexGap
+        sx={{ mb: 2 }}
+      >
         <Button startIcon={<VisibilityIcon />} variant="outlined" onClick={() => setPreview(true)}>
           Pré-visualizar
         </Button>
@@ -244,42 +251,54 @@ export function FormularioBuilder({ schemaInicial, salvando, erro, onSalvar }: P
 
       {/* Cabeçalho da página ativa */}
       {pagina && (
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center" sx={{ mb: 2 }}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1}
+          alignItems={{ xs: "stretch", sm: "center" }}
+          sx={{ mb: 2 }}
+        >
           <TextField
             label="Título da página"
             value={pagina.titulo}
             onChange={(e) => setPaginaCampo({ titulo: e.target.value })}
             size="small"
-            sx={{ flex: 1 }}
+            sx={{ flex: 1, width: { xs: "100%", sm: "auto" } }}
           />
           <TextField
             label="Descrição da página (opcional)"
             value={pagina.descricao ?? ""}
             onChange={(e) => setPaginaCampo({ descricao: e.target.value })}
             size="small"
-            sx={{ flex: 1 }}
+            sx={{ flex: 1, width: { xs: "100%", sm: "auto" } }}
           />
-          <Tooltip title="Mover página para a esquerda">
-            <span>
-              <IconButton size="small" disabled={idx === 0} onClick={() => moverPagina(-1)}>
-                <ChevronLeftIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Mover página para a direita">
-            <span>
-              <IconButton size="small" disabled={idx === paginas.length - 1} onClick={() => moverPagina(1)}>
-                <ChevronRightIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Excluir página">
-            <span>
-              <IconButton size="small" color="error" disabled={paginas.length <= 1} onClick={removerPagina}>
-                <DeleteIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            justifyContent={{ xs: "flex-end", sm: "flex-start" }}
+          >
+            <Tooltip title="Mover página para a esquerda">
+              <span>
+                <IconButton size="small" disabled={idx === 0} onClick={() => moverPagina(-1)}>
+                  <ChevronLeftIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Mover página para a direita">
+              <span>
+                <IconButton size="small" disabled={idx === paginas.length - 1} onClick={() => moverPagina(1)}>
+                  <ChevronRightIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Excluir página">
+              <span>
+                <IconButton size="small" color="error" disabled={paginas.length <= 1} onClick={removerPagina}>
+                  <DeleteIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
         </Stack>
       )}
 

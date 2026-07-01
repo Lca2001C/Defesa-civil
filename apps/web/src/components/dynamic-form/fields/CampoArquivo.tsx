@@ -69,8 +69,8 @@ export function CampoArquivo({ campo, field, error, onUpload }: FieldProps) {
       >
         {/* Sem callback de upload: modo preview */}
         {!onUpload && (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1, color: "text.disabled" }}>
-            <UploadFileIcon fontSize="small" />
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0, color: "text.disabled" }}>
+            <UploadFileIcon fontSize="small" sx={{ flexShrink: 0 }} />
             <Typography variant="body2">
               {campo.rotulo}
               {campo.obrigatorio && " *"}
@@ -111,7 +111,11 @@ export function CampoArquivo({ campo, field, error, onUpload }: FieldProps) {
               fontSize="small"
               sx={{ color: mensagemErro ? "error.main" : "text.secondary", flexShrink: 0 }}
             />
-            <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
               {campo.rotulo}
               {campo.obrigatorio && " *"}
             </Typography>

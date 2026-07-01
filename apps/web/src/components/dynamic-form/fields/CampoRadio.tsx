@@ -10,7 +10,7 @@ import type { FieldProps } from "../types";
 
 export function CampoRadio({ campo, field, error }: FieldProps) {
   return (
-    <FormControl error={!!error} required={campo.obrigatorio} component="fieldset">
+    <FormControl error={!!error} required={campo.obrigatorio} component="fieldset" fullWidth sx={{ minWidth: 0 }}>
       <FormLabel sx={{ fontSize: 14 }}>{campo.rotulo}</FormLabel>
       <RadioGroup value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value)}>
         {campo.opcoes?.map((o) => (

@@ -77,7 +77,13 @@ export default function MunicipioDetalhe() {
 
   return (
     <Stack spacing={3}>
-      <Stack direction="row" alignItems="center" spacing={2}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        flexWrap="wrap"
+        rowGap={0.5}
+        columnGap={2}
+      >
         <Button
           startIcon={<ArrowBackIcon />}
           onClick={() => navigate("/municipios")}
@@ -86,7 +92,7 @@ export default function MunicipioDetalhe() {
           Municípios
         </Button>
         <Typography variant="h5">{data.nome}</Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 0 }}>
           {data.uf.sigla} — {data.regional?.nome ?? "Sem regional"}
         </Typography>
       </Stack>

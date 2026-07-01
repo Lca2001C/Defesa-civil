@@ -82,7 +82,7 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
           value={pergunta.tipo}
           onChange={(e) => set({ tipo: e.target.value as TipoPergunta })}
           size="small"
-          sx={{ minWidth: 180 }}
+          sx={{ width: { xs: "100%", sm: 180 }, minWidth: { sm: 180 } }}
         >
           {TIPOS.map((t) => (
             <MenuItem key={t.tipo} value={t.tipo}>
@@ -92,21 +92,25 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
         </TextField>
       </Stack>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="center">
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        alignItems={{ xs: "stretch", sm: "center" }}
+      >
         <TextField
           label="Código (chave)"
           value={pergunta.codigo}
           onChange={(e) => set({ codigo: e.target.value.replace(/\s+/g, "_").toLowerCase() })}
           size="small"
           helperText="Identificador único nas respostas"
-          sx={{ flex: 1 }}
+          sx={{ flex: 1, minWidth: 0 }}
         />
         <TextField
           label="Texto de ajuda"
           value={pergunta.ajuda ?? ""}
           onChange={(e) => set({ ajuda: e.target.value })}
           size="small"
-          sx={{ flex: 1 }}
+          sx={{ flex: 1, minWidth: 0 }}
         />
         <FormControlLabel
           control={
@@ -127,7 +131,7 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
           value={pergunta.fonteAutomatica ?? ""}
           onChange={(e) => set({ fonteAutomatica: e.target.value as Pergunta["fonteAutomatica"] })}
           size="small"
-          sx={{ maxWidth: 280 }}
+          sx={{ width: "100%", maxWidth: 280 }}
         >
           {FONTES_AUTOMATICAS.map((f) => (
             <MenuItem key={f.fonte} value={f.fonte}>
@@ -195,7 +199,7 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
                 value={r.acao}
                 onChange={(e) => setRegra(i, { acao: e.target.value as AcaoCondicional })}
                 size="small"
-                sx={{ minWidth: 110 }}
+                sx={{ flex: "1 1 110px", minWidth: { xs: "100%", sm: 110 } }}
               >
                 <MenuItem value={AcaoCondicional.MOSTRAR}>Mostrar</MenuItem>
                 <MenuItem value={AcaoCondicional.OCULTAR}>Ocultar</MenuItem>
@@ -207,7 +211,7 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
                 value={r.origemCodigo}
                 onChange={(e) => setRegra(i, { origemCodigo: e.target.value })}
                 size="small"
-                sx={{ minWidth: 160 }}
+                sx={{ flex: "1 1 160px", minWidth: { xs: "100%", sm: 160 } }}
               >
                 {outras.map((p) => (
                   <MenuItem key={p.codigo} value={p.codigo}>
@@ -221,7 +225,7 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
                 value={r.operador}
                 onChange={(e) => setRegra(i, { operador: e.target.value as OperadorCondicional })}
                 size="small"
-                sx={{ minWidth: 120 }}
+                sx={{ flex: "1 1 120px", minWidth: { xs: "100%", sm: 120 } }}
               >
                 <MenuItem value={OperadorCondicional.IGUAL}>igual a</MenuItem>
                 <MenuItem value={OperadorCondicional.DIFERENTE}>diferente de</MenuItem>
@@ -232,7 +236,7 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
                 onChange={(e) => setRegra(i, { valor: e.target.value })}
                 size="small"
                 helperText="Sim/Não use true/false"
-                sx={{ minWidth: 120 }}
+                sx={{ flex: "1 1 120px", minWidth: { xs: "100%", sm: 120 } }}
               />
               <IconButton size="small" color="error" onClick={() => removerRegra(i)}>
                 <DeleteIcon fontSize="small" />

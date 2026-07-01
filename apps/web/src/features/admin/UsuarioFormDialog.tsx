@@ -14,7 +14,9 @@ import {
   Select,
   Stack,
   TextField,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { ApiError } from "../../lib/api";
 import { QUERY_KEYS } from "../../shared/constants";
 import { UsuariosService } from "./services/usuarios.service";
@@ -43,6 +45,8 @@ interface Props {
 
 export default function UsuarioFormDialog({ open, onClose, usuarioId }: Props) {
   const qc = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const isEdicao = !!usuarioId;
 
   const [nome, setNome] = useState("");
@@ -84,7 +88,7 @@ export default function UsuarioFormDialog({ open, onClose, usuarioId }: Props) {
   });
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullScreen={isMobile} fullWidth maxWidth="sm">
       <DialogTitle>{isEdicao ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -118,13 +122,26 @@ export default function UsuarioFormDialog({ open, onClose, usuarioId }: Props) {
           )}
         </Stack>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={mutation.isPending}>Cancelar</Button>
+      <DialogActions
+        sx={{
+          flexDirection: { xs: "column-reverse", sm: "row" },
+          alignItems: { xs: "stretch", sm: "center" },
+          gap: { xs: 1, sm: 0 },
+        }}
+      >
+        <Button
+          onClick={onClose}
+          disabled={mutation.isPending}
+          sx={{ width: { xs: "100%", sm: "auto" } }}
+        >
+          Cancelar
+        </Button>
         <Button
           variant="contained"
           onClick={() => mutation.mutate()}
           disabled={mutation.isPending || !nome || (!isEdicao && (!cpf || !email || !senha))}
           startIcon={mutation.isPending ? <CircularProgress size={16} color="inherit" /> : undefined}
+          sx={{ width: { xs: "100%", sm: "auto" } }}
         >
           {isEdicao ? "Salvar" : "Criar"}
         </Button>

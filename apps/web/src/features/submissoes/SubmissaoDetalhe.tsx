@@ -19,7 +19,9 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DownloadIcon from "@mui/icons-material/Download";
 import SendIcon from "@mui/icons-material/Send";
@@ -65,6 +67,8 @@ export default function SubmissaoDetalhe() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { usuario } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dialogAcao, setDialogAcao] = useState<string | null>(null);
@@ -195,9 +199,18 @@ export default function SubmissaoDetalhe() {
         </Alert>
       )}
 
-      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3, flexWrap: "wrap", gap: 1 }}>
-        <Box>
-          <Typography variant="h5">
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          mb: 3,
+          flexWrap: "wrap",
+          gap: 1,
+        }}
+      >
+        <Box sx={{ minWidth: 0, flex: "1 1 260px" }}>
+          <Typography variant="h5" sx={{ wordBreak: "break-word" }}>
             {data.formularioVersao.formulario.nome}{" "}
             <Typography component="span" variant="caption" color="text.secondary">
               v{data.formularioVersao.versao}
@@ -211,9 +224,9 @@ export default function SubmissaoDetalhe() {
             {data.enviadoEm && ` · Enviado em ${new Date(data.enviadoEm).toLocaleDateString("pt-BR")}`}
           </Typography>
         </Box>
-        <Stack spacing={1} alignItems="flex-end">
+        <Stack spacing={1} alignItems={{ xs: "flex-start", sm: "flex-end" }}>
           <Chip label={LABEL_STATUS[data.status] ?? data.status} color={COR_STATUS[data.status] ?? "default"} />
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
             <Button
               size="small"
               variant="outlined"
@@ -237,9 +250,23 @@ export default function SubmissaoDetalhe() {
       </Box>
 
       {botoes.length > 0 && (
-        <Box sx={{ display: "flex", gap: 1, mb: 3, flexWrap: "wrap" }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            gap: 1,
+            mb: 3,
+            flexWrap: "wrap",
+          }}
+        >
           {botoes.map((b) => (
-            <Button key={b.label} variant={b.color} startIcon={b.icon} onClick={b.acao}>
+            <Button
+              key={b.label}
+              variant={b.color}
+              startIcon={b.icon}
+              onClick={b.acao}
+              sx={{ width: { xs: "100%", sm: "auto" } }}
+            >
               {b.label}
             </Button>
           ))}
@@ -262,10 +289,12 @@ export default function SubmissaoDetalhe() {
               .filter(([, v]) => v)
               .map(([k, v]) => (
                 <Box key={k} sx={{ display: "flex", gap: 1, mb: 0.5 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ minWidth: 60 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ minWidth: 60, flexShrink: 0 }}>
                     {k}
                   </Typography>
-                  <Typography variant="body2">{v}</Typography>
+                  <Typography variant="body2" sx={{ minWidth: 0, wordBreak: "break-word" }}>
+                    {v}
+                  </Typography>
                 </Box>
               ))}
           </CardContent>
@@ -279,10 +308,14 @@ export default function SubmissaoDetalhe() {
             <Divider sx={{ mb: 1.5 }} />
             {Object.entries(data.dados).map(([k, v]) => (
               <Box key={k} sx={{ display: "flex", gap: 1, mb: 0.5 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 140 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ minWidth: { xs: 100, sm: 140 }, flexShrink: 0, wordBreak: "break-word" }}
+                >
                   {rotuloPorCodigo.get(k) ?? k}
                 </Typography>
-                <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+                <Typography variant="body2" sx={{ minWidth: 0, wordBreak: "break-word" }}>
                   {Array.isArray(v) ? v.join(", ") : String(v ?? "—")}
                 </Typography>
               </Box>
@@ -294,8 +327,18 @@ export default function SubmissaoDetalhe() {
       {/* Anexos */}
       <Card sx={{ mt: 3 }}>
         <CardContent>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Typography variant="h6">Anexos</Typography>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 1,
+            }}
+          >
+            <Typography variant="h6" sx={{ minWidth: 0 }}>
+              Anexos
+            </Typography>
             {podeEditar && (
               <Button
                 size="small"
@@ -344,6 +387,7 @@ export default function SubmissaoDetalhe() {
                 <ListItemText
                   primary={a.arquivo.nomeOriginal}
                   secondary={a.arquivo.tamanhoBytes ? `${Math.round(a.arquivo.tamanhoBytes / 1024)} KB` : undefined}
+                  sx={{ pr: podeEditar ? 5 : 0, wordBreak: "break-word" }}
                 />
               </ListItem>
             ))}
@@ -389,7 +433,7 @@ export default function SubmissaoDetalhe() {
         </Card>
       )}
 
-      <Dialog open={!!dialogAcao} onClose={() => setDialogAcao(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!dialogAcao} onClose={() => setDialogAcao(null)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {dialogAcao === "solicitar-correcao" && "Solicitar correção"}
           {dialogAcao === "revisar" && "Reenviar resposta corrigida"}

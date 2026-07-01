@@ -12,7 +12,7 @@ import type { FieldProps } from "../types";
 export function CampoSimNao({ campo, field, error }: FieldProps) {
   const valor = field.value === true ? "sim" : field.value === false ? "nao" : "";
   return (
-    <FormControl error={!!error} required={campo.obrigatorio} component="fieldset">
+    <FormControl error={!!error} required={campo.obrigatorio} component="fieldset" fullWidth sx={{ minWidth: 0 }}>
       <FormLabel sx={{ fontSize: 14 }}>{campo.rotulo}</FormLabel>
       <RadioGroup
         row

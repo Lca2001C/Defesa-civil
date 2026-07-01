@@ -14,11 +14,14 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import EventIcon from "@mui/icons-material/Event";
 import { ApiError } from "../../lib/api";
@@ -36,6 +39,8 @@ const anoAtual = new Date().getFullYear();
 
 export default function CompetenciasPage() {
   const qc = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { usuario } = useAuth();
   const podeGerenciar = usuario?.permissoes.includes("competencias.gerenciar") ?? false;
 
@@ -86,15 +91,29 @@ export default function CompetenciasPage() {
 
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-        <Box>
+      <Box
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 2,
+          justifyContent: "space-between",
+          alignItems: { xs: "stretch", sm: "center" },
+          mb: 3,
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
           <Typography variant="h5">Competências</Typography>
           <Typography variant="body2" color="text.secondary">
             Ciclos de coleta. Publique formulários em competências ABERTAS.
           </Typography>
         </Box>
         {podeGerenciar && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogAberto(true)}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setDialogAberto(true)}
+            sx={{ width: { xs: "100%", sm: "auto" } }}
+          >
             Nova competência
           </Button>
         )}
@@ -116,7 +135,8 @@ export default function CompetenciasPage() {
           <Typography>Nenhuma competência cadastrada.</Typography>
         </Box>
       ) : (
-        <Table size="small">
+        <TableContainer>
+          <Table size="small" sx={{ minWidth: 640 }}>
           <TableHead>
             <TableRow>
               <TableCell>Nome</TableCell>
@@ -156,10 +176,17 @@ export default function CompetenciasPage() {
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+          </Table>
+        </TableContainer>
       )}
 
-      <Dialog open={dialogAberto} onClose={() => setDialogAberto(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={dialogAberto}
+        onClose={() => setDialogAberto(false)}
+        maxWidth="xs"
+        fullWidth
+        fullScreen={isMobile}
+      >
         <DialogTitle>Nova competência</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>

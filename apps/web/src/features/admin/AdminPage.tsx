@@ -24,7 +24,13 @@ export default function AdminPage() {
 
       <Card>
         <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-          <Tabs value={aba} onChange={(_, v: number) => setAba(v)}>
+          <Tabs
+            value={aba}
+            onChange={(_, v: number) => setAba(v)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+          >
             {podeGerenciarUsuarios && (
               <Tab icon={<PeopleIcon />} iconPosition="start" label="Usuários" />
             )}

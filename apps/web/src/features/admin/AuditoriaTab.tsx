@@ -72,9 +72,9 @@ function LinhaLog({ log }: { log: LogAuditoria }) {
         <TableRow>
           <TableCell colSpan={7} sx={{ py: 0 }}>
             <Collapse in={expandido}>
-              <Stack direction="row" spacing={2} sx={{ p: 2 }}>
+              <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ p: 2 }}>
                 {log.antes && (
-                  <Box flex={1}>
+                  <Box flex={1} sx={{ minWidth: 0 }}>
                     <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
                       Antes
                     </Typography>
@@ -95,7 +95,7 @@ function LinhaLog({ log }: { log: LogAuditoria }) {
                   </Box>
                 )}
                 {log.depois && (
-                  <Box flex={1}>
+                  <Box flex={1} sx={{ minWidth: 0 }}>
                     <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
                       Depois
                     </Typography>
@@ -136,8 +136,8 @@ export default function AuditoriaTab() {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" alignItems="center" spacing={2}>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
+      <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} spacing={2}>
+        <FormControl size="small" sx={{ width: { xs: "100%", sm: 200 } }}>
           <InputLabel>Filtrar por entidade</InputLabel>
           <Select
             label="Filtrar por entidade"

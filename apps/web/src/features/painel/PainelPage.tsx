@@ -53,7 +53,7 @@ function CartaoIndicador({
   descricao: string;
 }) {
   return (
-    <Card sx={{ flex: "1 1 200px", minWidth: 180 }}>
+    <Card sx={{ flex: "1 1 200px", minWidth: { xs: "100%", sm: 180 } }}>
       <CardContent>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
           <CircleIcon sx={{ color: cor, fontSize: 13 }} />
@@ -219,13 +219,13 @@ export default function PainelPage() {
         alignItems={{ xs: "flex-start", sm: "center" }}
         spacing={2}
       >
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Typography variant="h5">Painel Estadual em Tempo Real</Typography>
           <Typography variant="body2" color="text.secondary">
             Acompanhamento dos 853 municípios de Minas Gerais
           </Typography>
         </Box>
-        <FormControl size="small" sx={{ minWidth: 220 }}>
+        <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 220 }, width: { xs: "100%", sm: "auto" } }}>
           <InputLabel>Competência</InputLabel>
           <Select
             label="Competência"
@@ -285,7 +285,7 @@ export default function PainelPage() {
           <Box sx={{ p: 2, borderBottom: "1px solid rgba(148,163,184,.15)" }}>
             <Typography variant="h6">Mapa de Minas Gerais</Typography>
           </Box>
-          <Box sx={{ height: 480, position: "relative" }}>
+          <Box sx={{ height: { xs: 360, sm: 420, md: 480 }, position: "relative" }}>
             {loadingStatus && (
               <Box
                 sx={{
@@ -361,7 +361,14 @@ export default function PainelPage() {
         anchor="right"
         open={drawerMunicipioId !== null}
         onClose={() => setDrawerMunicipioId(null)}
-        PaperProps={{ sx: { width: 380, bgcolor: "background.paper", p: 3 } }}
+        PaperProps={{
+          sx: {
+            width: { xs: "100%", sm: 380 },
+            maxWidth: "100vw",
+            bgcolor: "background.paper",
+            p: { xs: 2, sm: 3 },
+          },
+        }}
       >
         {drawerData ? (
           <Stack spacing={2}>
@@ -421,8 +428,22 @@ export default function PainelPage() {
                         bgcolor: cores.fundoSidebar,
                       }}
                     >
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="caption" sx={{ fontFamily: "monospace" }}>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        spacing={1}
+                      >
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontFamily: "monospace",
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {s.protocolo ?? s.id.slice(0, 8)}
                         </Typography>
                         <Chip
@@ -431,6 +452,7 @@ export default function PainelPage() {
                           sx={{
                             height: 18,
                             fontSize: "0.6rem",
+                            flexShrink: 0,
                             bgcolor:
                               s.status === "APROVADO"
                                 ? cores.verdeSucesso

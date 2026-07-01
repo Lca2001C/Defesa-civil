@@ -29,7 +29,7 @@ export default function RedefinirSenhaPage() {
     return (
       <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: cores.fundoPadrao, p: 2 }}>
         <Card sx={{ width: "100%", maxWidth: 420 }}>
-          <CardContent sx={{ p: 4 }}>
+          <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
             <Alert severity="error">
               Link inválido ou expirado. Solicite um novo link de recuperação.
             </Alert>
@@ -84,7 +84,7 @@ export default function RedefinirSenhaPage() {
       }}
     >
       <Card sx={{ width: "100%", maxWidth: 420 }}>
-        <CardContent sx={{ p: 4 }}>
+        <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
             Redefinir senha
           </Typography>

@@ -48,7 +48,7 @@ export default function RecuperarSenhaPage() {
       }}
     >
       <Card sx={{ width: "100%", maxWidth: 420 }}>
-        <CardContent sx={{ p: 4 }}>
+        <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
             Recuperar senha
           </Typography>

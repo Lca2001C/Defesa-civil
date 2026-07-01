@@ -24,7 +24,9 @@ import {
   TableRow,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import BlockIcon from "@mui/icons-material/Block";
@@ -40,6 +42,8 @@ import UsuarioFormDialog from "./UsuarioFormDialog";
 export default function UsuariosTab() {
   const { usuario: usuarioAtual } = useAuth();
   const qc = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [ativoFiltro, setAtivoFiltro] = useState<string>("true");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -82,8 +86,13 @@ export default function UsuariosTab() {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <FormControl size="small" sx={{ minWidth: 160 }}>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        alignItems={{ xs: "stretch", sm: "center" }}
+        spacing={2}
+      >
+        <FormControl size="small" sx={{ width: { xs: "100%", sm: 160 } }}>
           <InputLabel>Status</InputLabel>
           <Select
             label="Status"
@@ -98,13 +107,14 @@ export default function UsuariosTab() {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={abrirCriar}
+          sx={{ width: { xs: "100%", sm: "auto" } }}
         >
           Novo usuário
         </Button>
       </Stack>
 
-      <TableContainer>
-        <Table size="small">
+      <TableContainer sx={{ width: "100%" }}>
+        <Table size="small" sx={{ minWidth: 800 }}>
           <TableHead>
             <TableRow>
               <TableCell>Nome</TableCell>
@@ -233,6 +243,7 @@ export default function UsuariosTab() {
       <Dialog
         open={!!excluindoUsuario}
         onClose={() => { setExcluindoUsuario(null); setErroExclusao(null); }}
+        fullScreen={isMobile}
         maxWidth="xs"
         fullWidth
       >

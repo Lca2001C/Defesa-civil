@@ -53,7 +53,12 @@ export function SortablePergunta({ pergunta, secaoId, outras, onChange, onRemove
               {pergunta.obrigatorio && <span style={{ color: "#F97316" }}> *</span>}
             </Typography>
           </Box>
-          <Chip label={ROTULO_TIPO[pergunta.tipo]} size="small" variant="outlined" />
+          <Chip
+            label={ROTULO_TIPO[pergunta.tipo]}
+            size="small"
+            variant="outlined"
+            sx={{ flexShrink: 0, maxWidth: { xs: 110, sm: "none" } }}
+          />
           <IconButton size="small" onClick={() => setAberto((v) => !v)}>
             {aberto ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
           </IconButton>

@@ -190,7 +190,11 @@ export default function SubmissaoNova() {
         Nova resposta
       </Typography>
 
-      <Stepper activeStep={passo} sx={{ mb: 4 }}>
+      <Stepper
+        activeStep={passo}
+        alternativeLabel
+        sx={{ mb: 4, "& .MuiStepLabel-label": { typography: { xs: "caption", sm: "body2" } } }}
+      >
         {PASSOS.map((l) => (
           <Step key={l}>
             <StepLabel>{l}</StepLabel>
@@ -310,12 +314,24 @@ export default function SubmissaoNova() {
                 Campos preenchidos: <strong>{Object.keys(dados).length}</strong>
               </Typography>
 
-              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                <Button variant="outlined" onClick={() => setPasso(1)}>
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: { xs: "column", sm: "row" },
+                  gap: 1,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Button
+                  variant="outlined"
+                  sx={{ width: { xs: "100%", sm: "auto" } }}
+                  onClick={() => setPasso(1)}
+                >
                   Revisar respostas
                 </Button>
                 <Button
                   variant="outlined"
+                  sx={{ width: { xs: "100%", sm: "auto" } }}
                   disabled={enviarMutation.isPending}
                   onClick={() => navigate(`/submissoes/${submissaoId}`)}
                 >
@@ -323,6 +339,7 @@ export default function SubmissaoNova() {
                 </Button>
                 <Button
                   variant="contained"
+                  sx={{ width: { xs: "100%", sm: "auto" } }}
                   disabled={enviarMutation.isPending}
                   onClick={() => enviarMutation.mutate()}
                 >
@@ -339,8 +356,19 @@ export default function SubmissaoNova() {
           {/* Anexos */}
           <Card>
             <CardContent>
-              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                <Typography variant="h6">Anexos (opcional)</Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 1,
+                  mb: 1,
+                }}
+              >
+                <Typography variant="h6" sx={{ minWidth: 0 }}>
+                  Anexos (opcional)
+                </Typography>
                 <Button
                   size="small"
                   startIcon={<UploadFileIcon />}
@@ -402,6 +430,7 @@ export default function SubmissaoNova() {
                       <ListItemText
                         primary={a.nome}
                         secondary={a.tamanhoKb ? `${a.tamanhoKb} KB` : undefined}
+                        sx={{ pr: 5, wordBreak: "break-word" }}
                       />
                     </ListItem>
                   ))}

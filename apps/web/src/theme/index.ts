@@ -2,10 +2,10 @@
 // Aplica as cores EXATAS do SPEC e sobrescreve os componentes-chave
 // (AppBar laranja, Drawer e Card com os fundos institucionais).
 
-import { createTheme } from "@mui/material/styles";
+import { createTheme, responsiveFontSizes } from "@mui/material/styles";
 import { cores } from "./tokens";
 
-export const tema = createTheme({
+const temaBase = createTheme({
   palette: {
     mode: "dark",
     primary: {
@@ -69,3 +69,8 @@ export const tema = createTheme({
     },
   },
 });
+
+// responsiveFontSizes ajusta automaticamente o tamanho dos headings por
+// breakpoint (ex.: os numeros "h3" dos cards do dashboard encolhem no celular),
+// evitando titulos grandes demais e quebras de layout em telas pequenas.
+export const tema = responsiveFontSizes(temaBase);

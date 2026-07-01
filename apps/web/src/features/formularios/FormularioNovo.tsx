@@ -109,8 +109,8 @@ export default function FormularioNovo() {
                     onClick={() => criarDeTemplate.mutate(t.id)}
                     disabled={criarDeTemplate.isPending}
                   >
-                    <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <Box>
+                    <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
+                      <Box sx={{ minWidth: 0 }}>
                         <Typography variant="subtitle2">{t.nome}</Typography>
                         {t.descricao && (
                           <Typography variant="body2" color="text.secondary">
@@ -134,7 +134,7 @@ export default function FormularioNovo() {
       )}
 
       {modo === "branco" && (
-        <Card sx={{ maxWidth: 560 }}>
+        <Card sx={{ width: "100%", maxWidth: 560 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>
               Dados do formulário
@@ -161,7 +161,11 @@ export default function FormularioNovo() {
                 </Select>
               </FormControl>
               <Divider />
-              <Stack direction="row" spacing={1}>
+              <Stack
+                direction={{ xs: "column-reverse", sm: "row" }}
+                spacing={1}
+                sx={{ "& > .MuiButton-root": { width: { xs: "100%", sm: "auto" } } }}
+              >
                 <Button onClick={() => setModo("escolha")} variant="outlined">
                   Voltar
                 </Button>

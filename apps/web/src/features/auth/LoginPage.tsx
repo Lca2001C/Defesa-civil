@@ -22,7 +22,9 @@ import {
   Tabs,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../lib/auth-context";
@@ -112,6 +114,8 @@ function AbaEntrar() {
 function AbaCriarConta() {
   const { salvarTokens } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [form, setForm] = useState({
     nome: "", cpf: "", email: "", senha: "", confirmarSenha: "",
@@ -247,12 +251,12 @@ function AbaCriarConta() {
             Você é Coordenador de COMPDEC? *
           </FormLabel>
           <RadioGroup
-            row
             value={ehCoordenador}
             onChange={(e) => {
               setEhCoordenador(e.target.value as "sim" | "nao");
               setErros((v) => ({ ...v, ehCoordenador: "", municipioId: "" }));
             }}
+            sx={{ flexDirection: { xs: "column", sm: "row" } }}
           >
             <FormControlLabel value="sim" control={<Radio size="small" />} label="Sim, sou Coordenador de COMPDEC" />
             <FormControlLabel value="nao" control={<Radio size="small" />} label="Não sou Coordenador de COMPDEC" />
@@ -305,8 +309,8 @@ function AbaCriarConta() {
       </Box>
 
       {/* Dialog Termos LGPD */}
-      <Dialog open={termoAberto} onClose={() => setTermoAberto(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
+      <Dialog open={termoAberto} onClose={() => setTermoAberto(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
+        <DialogTitle sx={{ pr: 6 }}>
           Termos de Uso e Política de Privacidade
           <IconButton onClick={() => setTermoAberto(false)} sx={{ position: "absolute", right: 8, top: 8 }}>
             <CloseIcon />
@@ -321,9 +325,10 @@ function AbaCriarConta() {
             {termo?.conteudo}
           </Typography>
         </DialogContent>
-        <Box sx={{ p: 2, display: "flex", justifyContent: "flex-end" }}>
+        <Box sx={{ p: 2, display: "flex", justifyContent: { xs: "stretch", sm: "flex-end" } }}>
           <Button
             variant="contained"
+            fullWidth={isMobile}
             onClick={() => {
               setTermoLido(true);
               setAceite(true);
@@ -356,7 +361,7 @@ export default function LoginPage() {
       }}
     >
       <Card sx={{ width: "100%", maxWidth: 460 }}>
-        <CardContent sx={{ p: 4 }}>
+        <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Box sx={{ display: "flex", alignItems: "center", mb: 3, gap: 1.5 }}>
             <Box
               component="img"

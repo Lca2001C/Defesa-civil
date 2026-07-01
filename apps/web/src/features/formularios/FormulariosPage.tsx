@@ -15,7 +15,9 @@ import {
   IconButton,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import DescriptionIcon from "@mui/icons-material/Description";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -37,6 +39,8 @@ export default function FormulariosPage() {
   const navigate = useNavigate();
   const { usuario } = useAuth();
   const qc = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const podeGerenciar = usuario?.permissoes.includes("formularios.criar") ?? false;
   const [excluindo, setExcluindo] = useState<Formulario | null>(null);
   const [erroExclusao, setErroExclusao] = useState<string | null>(null);
@@ -60,8 +64,17 @@ export default function FormulariosPage() {
 
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-        <Box>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: { xs: "flex-start", sm: "center" },
+          flexWrap: "wrap",
+          gap: 2,
+          mb: 3,
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
           <Typography variant="h5">Formulários</Typography>
           <Typography variant="body2" color="text.secondary">
             {data ? `${data.total} formulário${data.total !== 1 ? "s" : ""} cadastrado${data.total !== 1 ? "s" : ""}` : "Carregando…"}
@@ -72,6 +85,7 @@ export default function FormulariosPage() {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => navigate("/formularios/novo")}
+            sx={{ width: { xs: "100%", sm: "auto" } }}
           >
             Novo formulário
           </Button>
@@ -100,14 +114,14 @@ export default function FormulariosPage() {
         {data?.items.map((f) => (
           <Card key={f.id}>
             <Box sx={{ display: "flex", alignItems: "stretch" }}>
-              <CardActionArea onClick={() => navigate(`/formularios/${f.id}`)} sx={{ flex: 1 }}>
-                <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <Box>
+              <CardActionArea onClick={() => navigate(`/formularios/${f.id}`)} sx={{ flex: 1, minWidth: 0 }}>
+                <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1.5 }}>
+                  <Box sx={{ minWidth: 0 }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                       {f.nome}
                     </Typography>
                     {f.descricao && (
-                      <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 500 }}>
+                      <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: "100%" }}>
                         {f.descricao}
                       </Typography>
                     )}
@@ -120,6 +134,7 @@ export default function FormulariosPage() {
                     label={f.status}
                     color={COR_STATUS[f.status] ?? "default"}
                     size="small"
+                    sx={{ flexShrink: 0 }}
                   />
                 </CardContent>
               </CardActionArea>
@@ -146,6 +161,7 @@ export default function FormulariosPage() {
         onClose={() => { setExcluindo(null); setErroExclusao(null); }}
         maxWidth="xs"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Excluir formulário?</DialogTitle>
         <DialogContent>

@@ -131,8 +131,20 @@ export default function DashboardPage() {
             Indicadores consolidados por competência
           </Typography>
         </Box>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <FormControl size="small" sx={{ minWidth: 220 }}>
+        <Stack
+          direction="row"
+          spacing={2}
+          alignItems="center"
+          useFlexGap
+          sx={{
+            flexWrap: "wrap",
+            width: { xs: "100%", sm: "auto" },
+          }}
+        >
+          <FormControl
+            size="small"
+            sx={{ flex: "1 1 220px", minWidth: { xs: "100%", sm: 220 } }}
+          >
             <InputLabel>Competência</InputLabel>
             <Select
               label="Competência"
@@ -154,6 +166,7 @@ export default function DashboardPage() {
             startIcon={exportando ? <CircularProgress size={16} color="inherit" /> : <DownloadIcon />}
             disabled={!competenciaId || exportando}
             onClick={handleExportar}
+            sx={{ width: { xs: "100%", sm: "auto" }, flexShrink: 0 }}
           >
             Exportar Excel
           </Button>
@@ -227,7 +240,7 @@ export default function DashboardPage() {
                     Sem dados
                   </Typography>
                 ) : (
-                  <TableContainer>
+                  <TableContainer sx={{ overflowX: "auto" }}>
                     <Table size="small">
                       <TableHead>
                         <TableRow>
@@ -264,7 +277,7 @@ export default function DashboardPage() {
                     Sem dados
                   </Typography>
                 ) : (
-                  <TableContainer>
+                  <TableContainer sx={{ overflowX: "auto" }}>
                     <Table size="small">
                       <TableHead>
                         <TableRow>
@@ -313,14 +326,14 @@ export default function DashboardPage() {
                     <Stack key={t.data} direction="row" alignItems="center" spacing={1}>
                       <Typography
                         variant="caption"
-                        sx={{ width: 90, flexShrink: 0, fontFamily: "monospace" }}
+                        sx={{ width: { xs: 66, sm: 90 }, flexShrink: 0, fontFamily: "monospace" }}
                       >
                         {new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR", {
                           day: "2-digit",
                           month: "short",
                         })}
                       </Typography>
-                      <Box sx={{ flex: 1, position: "relative", height: 14 }}>
+                      <Box sx={{ flex: 1, minWidth: 0, position: "relative", height: 14 }}>
                         {/* barra enviadas */}
                         <Box
                           sx={{
@@ -349,14 +362,17 @@ export default function DashboardPage() {
                           }}
                         />
                       </Box>
-                      <Typography variant="caption" sx={{ width: 50, textAlign: "right" }}>
+                      <Typography
+                        variant="caption"
+                        sx={{ width: { xs: 40, sm: 50 }, flexShrink: 0, textAlign: "right" }}
+                      >
                         {t.enviadas}
                       </Typography>
                     </Stack>
                   ))}
                 </Stack>
                 <Divider sx={{ my: 1.5 }} />
-                <Stack direction="row" spacing={2}>
+                <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap" }}>
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: cores.laranjaPrimario, opacity: 0.7 }} />
                     <Typography variant="caption" color="text.secondary">Enviadas</Typography>

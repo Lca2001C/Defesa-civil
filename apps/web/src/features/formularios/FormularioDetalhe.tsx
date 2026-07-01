@@ -58,8 +58,17 @@ export default function FormularioDetalhe() {
         Voltar
       </Button>
 
-      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
-        <Box>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          gap: 1.5,
+          mb: 3,
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
           <Typography variant="h5">{data.nome}</Typography>
           {data.descricao && (
             <Typography variant="body2" color="text.secondary">
@@ -72,7 +81,11 @@ export default function FormularioDetalhe() {
             </Typography>
           )}
         </Box>
-        <Chip label={data.status} color={COR_STATUS[data.status] ?? "default"} />
+        <Chip
+          label={data.status}
+          color={COR_STATUS[data.status] ?? "default"}
+          sx={{ flexShrink: 0 }}
+        />
       </Box>
 
       <Typography variant="h6" sx={{ mb: 1.5 }}>
@@ -82,8 +95,16 @@ export default function FormularioDetalhe() {
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
         {data.versoes.map((v) => (
           <Card key={v.id}>
-            <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <Box>
+            <CardContent
+              sx={{
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                justifyContent: "space-between",
+                alignItems: { xs: "flex-start", sm: "center" },
+                gap: 1.5,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle2">Versão {v.versao}</Typography>
                 {v.competencia && (
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>

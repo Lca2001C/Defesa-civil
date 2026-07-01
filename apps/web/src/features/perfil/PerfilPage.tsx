@@ -19,7 +19,9 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import EditIcon from "@mui/icons-material/Edit";
 import LockIcon from "@mui/icons-material/Lock";
 import BadgeIcon from "@mui/icons-material/Badge";
@@ -133,14 +135,27 @@ export default function PerfilPage() {
             >
               {iniciais(perfil.nome)}
             </Avatar>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            <Box sx={{ flex: 1, minWidth: 0, textAlign: { xs: "center", sm: "left" } }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, wordBreak: "break-word" }}>
                 {perfil.nome}
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.5, wordBreak: "break-word" }}
+              >
                 {perfil.email}
               </Typography>
-              <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap", gap: 0.5 }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  mt: 1,
+                  flexWrap: "wrap",
+                  gap: 0.5,
+                  justifyContent: { xs: "center", sm: "flex-start" },
+                }}
+              >
                 <Chip
                   label={perfil.perfil.nome}
                   size="small"
@@ -159,12 +174,17 @@ export default function PerfilPage() {
                 />
               </Stack>
             </Box>
-            <Stack spacing={1} direction={{ xs: "row", sm: "column" }}>
+            <Stack
+              spacing={1}
+              direction={{ xs: "column", sm: "column" }}
+              sx={{ width: { xs: "100%", sm: "auto" }, flexShrink: 0 }}
+            >
               <Button
                 variant="outlined"
                 size="small"
                 startIcon={<EditIcon />}
                 onClick={() => setEditOpen(true)}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
               >
                 Editar
               </Button>
@@ -174,6 +194,7 @@ export default function PerfilPage() {
                 color="warning"
                 startIcon={<LockIcon />}
                 onClick={() => setSenhaOpen(true)}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
               >
                 Alterar senha
               </Button>
@@ -338,6 +359,8 @@ function EditarDadosDialog({
   perfil: PerfilData;
   onSuccess: () => void;
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [nome, setNome] = useState(perfil.nome);
   const [cargo, setCargo] = useState(perfil.cargo ?? "");
   const [telefone, setTelefone] = useState(perfil.telefone ?? "");
@@ -353,7 +376,7 @@ function EditarDadosDialog({
   });
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullScreen={isMobile} fullWidth maxWidth="sm">
       <DialogTitle>Editar dados pessoais</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -411,6 +434,8 @@ function AlterarSenhaDialog({
   onClose: () => void;
   usuarioId: string;
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [novaSenha, setNovaSenha] = useState("");
   const [confirmar, setConfirmar] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -435,7 +460,7 @@ function AlterarSenhaDialog({
   });
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xs">
+    <Dialog open={open} onClose={handleClose} fullScreen={isMobile} fullWidth maxWidth="xs">
       <DialogTitle>Alterar senha</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>

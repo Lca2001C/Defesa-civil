@@ -66,7 +66,7 @@ export default function MunicipiosPage() {
             placeholder="Buscar município..."
             value={nomeFiltro}
             onChange={(e) => handleNomeChange(e.target.value)}
-            sx={{ width: 300 }}
+            sx={{ width: { xs: "100%", sm: 300 } }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -81,7 +81,7 @@ export default function MunicipiosPage() {
       {/* tabela */}
       <Card>
         <TableContainer>
-          <Table size="small">
+          <Table size="small" sx={{ minWidth: 900 }}>
             <TableHead>
               <TableRow>
                 <TableCell>Código IBGE</TableCell>

@@ -17,7 +17,9 @@ import {
   Select,
   Stack,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PublishIcon from "@mui/icons-material/Publish";
 import type { SchemaFormulario } from "@dcmg/contracts";
@@ -30,6 +32,8 @@ export default function FormularioEditar() {
   const { id, versaoId } = useParams<{ id: string; versaoId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [erro, setErro] = useState<string | null>(null);
   const [publicarAberto, setPublicarAberto] = useState(false);
   const [competenciaId, setCompetenciaId] = useState("");
@@ -85,8 +89,15 @@ export default function FormularioEditar() {
         Voltar
       </Button>
 
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Box>
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        flexWrap="wrap"
+        gap={1}
+        sx={{ mb: 2 }}
+      >
+        <Box sx={{ minWidth: 0 }}>
           <Typography variant="h5">{data.formulario.nome}</Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="body2" color="text.secondary">
@@ -124,7 +135,13 @@ export default function FormularioEditar() {
         onSalvar={(schema) => salvar.mutate(schema)}
       />
 
-      <Dialog open={publicarAberto} onClose={() => setPublicarAberto(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={publicarAberto}
+        onClose={() => setPublicarAberto(false)}
+        fullScreen={isMobile}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>Publicar formulário</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
