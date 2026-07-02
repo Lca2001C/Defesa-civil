@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Navigate } from "react-router-dom";
 import { Box, Card, CardContent, Tab, Tabs, Typography } from "@mui/material";
 import PeopleIcon from "@mui/icons-material/People";
 import HistoryIcon from "@mui/icons-material/History";
@@ -9,6 +10,11 @@ import AuditoriaTab from "./AuditoriaTab";
 export default function AdminPage() {
   const { usuario } = useAuth();
   const [aba, setAba] = useState(0);
+
+  // Defesa em profundidade: o módulo Admin é só de Gestor Estadual (80) e Super
+  // Admin. A rota é acessível a qualquer autenticado, então barramos aqui também
+  // (o menu já esconde, e o backend rejeita — esta é a 3ª camada).
+  if ((usuario?.perfilNivel ?? 0) < 80) return <Navigate to="/" replace />;
 
   const podeGerenciarUsuarios = usuario?.permissoes.includes("usuarios.gerenciar") ?? false;
   const podeLerAuditoria = usuario?.permissoes.includes("auditoria.ler") ?? false;

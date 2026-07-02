@@ -1,4 +1,4 @@
-﻿import {
+import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -16,8 +16,16 @@ import type { AtualizarUsuarioDto } from '../dtos/atualizar-usuario.dto';
 /**
  * Serviço de usuários.
  *
- * Inclui o endpoint de subject access request (LGPD art. 18, I-II):
- * o próprio usuário pode consultar todos os seus dados pessoais.
+ * Regras de acesso ao MÓDULO de gestão de usuários (backend = fonte da verdade,
+ * não confie só no frontend):
+ *  - Gerenciar usuários (listar/criar/editar/ativar/desativar): nível >=
+ *    GESTOR_ESTADUAL (80). Ou seja, apenas Gestor Estadual e Super Admin.
+ *  - Mudar o nível de permissão (perfil) de um usuário OU excluir usuários:
+ *    apenas SUPER_ADMIN (100).
+ *
+ * Inclui também o subject access request (LGPD art. 18, I-II): o próprio
+ * usuário pode consultar todos os seus dados pessoais (endpoints /me e
+ * /meus-dados, que NÃO exigem gestão de usuários).
  */
 @Injectable()
 export class UsuariosService {
@@ -60,6 +68,7 @@ export class UsuariosService {
     filtros: { municipioId?: number; regionalId?: string; ativo?: boolean },
     usuario: JwtPayload,
   ) {
+    this.exigirGestaoUsuarios(usuario);
     // Escopo do solicitante (LGPD/minimização): só gestores estaduais veem todos.
     const usuarios = await this.repo.listar(filtros ?? {}, this.escopoListagem(usuario));
     // Máscara de CPF na grade (mesma política dos demais endpoints).
@@ -85,6 +94,7 @@ export class UsuariosService {
   }
 
   async buscarPorId(id: string, usuario: JwtPayload) {
+    this.exigirGestaoUsuarios(usuario);
     this.verificarEscopo(id, usuario);
     const encontrado = await this.repo.buscarDetalhado(id);
     if (!encontrado) throw new NotFoundException('Usuário não encontrado.');
@@ -92,6 +102,7 @@ export class UsuariosService {
   }
 
   async criar(dto: CriarUsuarioDto, usuario: JwtPayload) {
+    this.exigirGestaoUsuarios(usuario);
     const [emailExiste, cpfExiste, perfilAlvo] = await Promise.all([
       this.repo.emailExiste(dto.email),
       this.repo.cpfExiste(dto.cpf),
@@ -125,11 +136,14 @@ export class UsuariosService {
   }
 
   async atualizar(id: string, dto: AtualizarUsuarioDto, usuario: JwtPayload) {
+    this.exigirGestaoUsuarios(usuario);
     this.verificarEscopo(id, usuario);
     await this.buscarOuFalhar(id);
 
     let perfilId: string | undefined;
     if (dto.perfilCodigo) {
+      // Mudar o nível de permissão (perfil) é exclusivo do SUPER_ADMIN.
+      this.exigirSuperAdmin(usuario, 'alterar o perfil (nível de permissão) de um usuário');
       const perfilAlvo = await this.repo.buscarPerfilPorCodigo(dto.perfilCodigo);
       if (!perfilAlvo) throw new NotFoundException(`Perfil "${dto.perfilCodigo}" não encontrado.`);
       // Anti-escalonamento: não promover a um nível acima do próprio.
@@ -146,12 +160,14 @@ export class UsuariosService {
   }
 
   async ativar(id: string, usuario: JwtPayload) {
+    this.exigirGestaoUsuarios(usuario);
     this.verificarEscopo(id, usuario);
     await this.buscarOuFalhar(id);
     return this.repo.definirAtivo(id, true);
   }
 
   async desativar(id: string, usuario: JwtPayload) {
+    this.exigirGestaoUsuarios(usuario);
     this.verificarEscopo(id, usuario);
     if (id === usuario.sub) {
       throw new BadRequestException('Você não pode desativar sua própria conta.');
@@ -177,6 +193,9 @@ export class UsuariosService {
   }
 
   async excluir(id: string, usuario: JwtPayload) {
+    // Excluir usuários é exclusivo do SUPER_ADMIN.
+    this.exigirSuperAdmin(usuario, 'excluir usuários');
+
     if (id === usuario.sub) {
       throw new BadRequestException('Você não pode excluir sua própria conta.');
     }
@@ -206,6 +225,26 @@ export class UsuariosService {
     const u = await this.repo.buscarPorId(id);
     if (!u) throw new NotFoundException('Usuário não encontrado.');
     return u;
+  }
+
+  /**
+   * Restringe o MÓDULO de gestão de usuários a Gestor Estadual (80) e Super
+   * Admin (100). Independe da permissão "usuarios.gerenciar" — é a barreira que
+   * impede perfis municipais/regionais de acessarem o módulo, mesmo via API.
+   */
+  private exigirGestaoUsuarios(usuario: JwtPayload): void {
+    if (usuario.perfilNivel < PERMISSION_LEVEL.GESTOR_ESTADUAL) {
+      throw new ForbiddenException(
+        'Módulo de usuários restrito a Gestor Estadual e Super Administrador.',
+      );
+    }
+  }
+
+  /** Ações exclusivas do Super Administrador (mudar nível de permissão / excluir). */
+  private exigirSuperAdmin(usuario: JwtPayload, acao: string): void {
+    if (usuario.perfilNivel < PERMISSION_LEVEL.SUPER_ADMIN) {
+      throw new ForbiddenException(`Apenas o Super Administrador pode ${acao}.`);
+    }
   }
 
   private verificarEscopo(alvoId: string, usuario: JwtPayload): void {

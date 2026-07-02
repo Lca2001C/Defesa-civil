@@ -41,6 +41,8 @@ import UsuarioFormDialog from "./UsuarioFormDialog";
 
 export default function UsuariosTab() {
   const { usuario: usuarioAtual } = useAuth();
+  // Excluir usuários é exclusivo do Super Admin (nível 100) — o backend também exige.
+  const isSuperAdmin = (usuarioAtual?.perfilNivel ?? 0) >= 100;
   const qc = useQueryClient();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -207,15 +209,17 @@ export default function UsuariosTab() {
                               {u.ativo ? <BlockIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
                             </Button>
                           </Tooltip>
-                          <Tooltip title="Excluir permanentemente">
-                            <Button
-                              size="small"
-                              color="error"
-                              onClick={() => { setExcluindoUsuario(u); setErroExclusao(null); }}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </Button>
-                          </Tooltip>
+                          {isSuperAdmin && (
+                            <Tooltip title="Excluir permanentemente">
+                              <Button
+                                size="small"
+                                color="error"
+                                onClick={() => { setExcluindoUsuario(u); setErroExclusao(null); }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </Button>
+                            </Tooltip>
+                          )}
                         </>
                       )}
                     </Stack>

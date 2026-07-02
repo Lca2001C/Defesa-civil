@@ -27,7 +27,8 @@ export interface AtualizarUsuarioInput {
   nome: string;
   cargo?: string;
   telefone?: string;
-  perfilCodigo: string;
+  // Opcional: só o SUPER_ADMIN envia perfilCodigo (mudar nível de permissão).
+  perfilCodigo?: string;
 }
 
 export interface LogAuditoria {

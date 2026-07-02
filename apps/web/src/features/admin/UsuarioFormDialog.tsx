@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormHelperText,
   InputLabel,
   MenuItem,
   Select,
@@ -17,6 +18,7 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import { useAuth } from "../../lib/auth-context";
 import { ApiError } from "../../lib/api";
 import { QUERY_KEYS } from "../../shared/constants";
 import { UsuariosService } from "./services/usuarios.service";
@@ -48,6 +50,12 @@ export default function UsuarioFormDialog({ open, onClose, usuarioId }: Props) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const isEdicao = !!usuarioId;
+  const { usuario } = useAuth();
+  // Só o Super Admin (100) pode mudar o nível de permissão (perfil). Na criação,
+  // o Gestor Estadual também escolhe o perfil (limitado pelo anti-escalonamento
+  // do backend). Na EDIÇÃO, o perfil fica travado para quem não é Super Admin.
+  const isSuperAdmin = (usuario?.perfilNivel ?? 0) >= 100;
+  const podeEditarPerfil = !isEdicao || isSuperAdmin;
 
   const [nome, setNome] = useState("");
   const [cpf, setCpf] = useState("");
@@ -71,7 +79,13 @@ export default function UsuarioFormDialog({ open, onClose, usuarioId }: Props) {
   const mutation = useMutation({
     mutationFn: () => {
       if (isEdicao) {
-        return UsuariosService.atualizar(usuarioId!, { nome, cargo, telefone, perfilCodigo });
+        return UsuariosService.atualizar(usuarioId!, {
+          nome,
+          cargo,
+          telefone,
+          // Só o Super Admin envia perfilCodigo (mudar nível de permissão).
+          ...(isSuperAdmin ? { perfilCodigo } : {}),
+        });
       }
       return UsuariosService.criar({
         nome, cpf, email, senha, cargo, telefone, perfilCodigo, escopo,
@@ -103,11 +117,14 @@ export default function UsuarioFormDialog({ open, onClose, usuarioId }: Props) {
           )}
           <TextField label="Cargo" fullWidth size="small" value={cargo} onChange={(e) => setCargo(e.target.value)} />
           <TextField label="Telefone" fullWidth size="small" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
-          <FormControl fullWidth size="small">
+          <FormControl fullWidth size="small" disabled={!podeEditarPerfil}>
             <InputLabel>Perfil</InputLabel>
             <Select label="Perfil" value={perfilCodigo} onChange={(e) => setPerfilCodigo(e.target.value)}>
               {PERFIS.map((p) => <MenuItem key={p.codigo} value={p.codigo}>{p.label}</MenuItem>)}
             </Select>
+            {isEdicao && !isSuperAdmin && (
+              <FormHelperText>Somente o Super Administrador pode alterar o perfil.</FormHelperText>
+            )}
           </FormControl>
           {!isEdicao && (
             <FormControl fullWidth size="small">

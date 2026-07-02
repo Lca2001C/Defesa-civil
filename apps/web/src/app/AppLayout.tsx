@@ -51,7 +51,9 @@ const itensMenu: ItemMenu[] = [
   { rotulo: "Submissões", icone: <AssignmentIcon />, path: "/submissoes" },
   { rotulo: "Competências", icone: <EventIcon />, path: "/competencias" },
   { rotulo: "Municípios", icone: <LocationCityIcon />, path: "/municipios", nivelMinimo: 50 },
-  { rotulo: "Admin", icone: <AdminPanelSettingsIcon />, path: "/admin", permissao: "usuarios.gerenciar" },
+  // Módulo Admin: só Gestor Estadual (80) e Super Admin (100). A regra é
+  // imposta também no backend (usuarios.service.ts) e na rota (AdminPage).
+  { rotulo: "Admin", icone: <AdminPanelSettingsIcon />, path: "/admin", nivelMinimo: 80 },
   { rotulo: "Meu Perfil", icone: <AccountCircleIcon />, path: "/perfil" },
 ];
 

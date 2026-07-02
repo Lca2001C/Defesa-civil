@@ -128,6 +128,10 @@ const PERFIS: PerfilCatalogo[] = [
     codigo: "ADMIN_MUNICIPAL",
     nome: "Administrador Municipal",
     nivel: 50,
+    // Sem "usuarios.gerenciar": a gestão de usuários é exclusiva de Gestor
+    // Estadual (80) e Super Admin (100). O backend impõe isso por nível
+    // (usuarios.service.ts), então esta remoção só reflete o modelo — mas
+    // aplique via re-seed para manter a permissão coerente no banco.
     permissoes: [
       "painel.ver",
       "submissoes.criar",
@@ -135,7 +139,6 @@ const PERFIS: PerfilCatalogo[] = [
       "submissoes.revisar",
       "submissoes.validar",
       "relatorios.exportar",
-      "usuarios.gerenciar",
     ],
   },
   {
