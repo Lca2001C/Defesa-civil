@@ -26,7 +26,7 @@ import AddIcon from "@mui/icons-material/Add";
 import EventIcon from "@mui/icons-material/Event";
 import { ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
-import { QUERY_KEYS } from "../../shared/constants";
+import { NIVEL_MODULO_ADMIN, QUERY_KEYS } from "../../shared/constants";
 import { CompetenciasService } from "./services/competencias.service";
 
 const COR_STATUS: Record<string, "default" | "success" | "warning"> = {
@@ -42,7 +42,9 @@ export default function CompetenciasPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { usuario } = useAuth();
-  const podeGerenciar = usuario?.permissoes.includes("competencias.gerenciar") ?? false;
+  // Abrir/encerrar/criar competências é ação do módulo admin: só Gestor Estadual
+  // (80) e Super Admin (100). O backend impõe por nível (@NivelMinimo).
+  const podeGerenciar = (usuario?.perfilNivel ?? 0) >= NIVEL_MODULO_ADMIN;
 
   const [dialogAberto, setDialogAberto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);

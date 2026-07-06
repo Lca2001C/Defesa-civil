@@ -13,7 +13,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../lib/auth-context";
-import { QUERY_KEYS } from "../../shared/constants";
+import { NIVEL_MODULO_ADMIN, QUERY_KEYS } from "../../shared/constants";
 import { FormulariosService } from "./services/formularios.service";
 import { PreviewDialog } from "./builder/PreviewDialog";
 import { useState } from "react";
@@ -29,7 +29,9 @@ export default function FormularioDetalhe() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { usuario } = useAuth();
-  const podeEditar = usuario?.permissoes.includes("formularios.criar") ?? false;
+  // Editar versões é ação do módulo admin: só Gestor Estadual (80) e Super Admin
+  // (100). O backend impõe por nível (@NivelMinimo); aqui só ocultamos a UI.
+  const podeEditar = (usuario?.perfilNivel ?? 0) >= NIVEL_MODULO_ADMIN;
   const [previewSchema, setPreviewSchema] = useState<SchemaFormulario | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -118,7 +120,7 @@ export default function FormularioDetalhe() {
                     : ""}
                 </Typography>
               </Box>
-              <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
                 <Chip label={v.status} color={COR_STATUS[v.status] ?? "default"} size="small" />
                 <Button size="small" startIcon={<VisibilityIcon />} onClick={() => abrirPreview(v.id)}>
                   Preview

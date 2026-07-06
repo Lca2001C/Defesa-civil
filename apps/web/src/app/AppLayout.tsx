@@ -33,6 +33,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useState, type ReactNode } from "react";
 import { cores } from "../theme/tokens";
 import { useAuth } from "../lib/auth-context";
+import { NIVEL_MODULO_ADMIN } from "../shared/constants";
 
 const LARGURA_SIDEBAR = 248;
 
@@ -53,7 +54,7 @@ const itensMenu: ItemMenu[] = [
   { rotulo: "Municípios", icone: <LocationCityIcon />, path: "/municipios", nivelMinimo: 50 },
   // Módulo Admin: só Gestor Estadual (80) e Super Admin (100). A regra é
   // imposta também no backend (usuarios.service.ts) e na rota (AdminPage).
-  { rotulo: "Admin", icone: <AdminPanelSettingsIcon />, path: "/admin", nivelMinimo: 80 },
+  { rotulo: "Admin", icone: <AdminPanelSettingsIcon />, path: "/admin", nivelMinimo: NIVEL_MODULO_ADMIN },
   { rotulo: "Meu Perfil", icone: <AccountCircleIcon />, path: "/perfil" },
 ];
 

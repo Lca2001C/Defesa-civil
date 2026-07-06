@@ -1,5 +1,13 @@
 /** Constantes compartilhadas do frontend. */
 
+/**
+ * Nível mínimo (perfilNivel) para o MÓDULO ADMIN: gerir usuários, criar/editar/
+ * publicar/excluir formulários e abrir/encerrar competências. Apenas Gestor
+ * Estadual (80) e Super Admin (100). Espelha a barreira imposta no backend
+ * (@NivelMinimo nos controllers). É a fonte da verdade; o front só oculta a UI.
+ */
+export const NIVEL_MODULO_ADMIN = 80;
+
 /** Tipos de arquivo aceitos no upload de anexos (atributo `accept` do input). */
 export const ACCEPT_TIPOS =
   ".pdf,.docx,.doc,.xlsx,.xls,.zip,.png,.jpg,.jpeg,.kml,.kmz,.json,.geojson,.shp,.dbf,.shx,.prj";

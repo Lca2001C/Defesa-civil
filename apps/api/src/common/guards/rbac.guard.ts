@@ -8,6 +8,7 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/publico.decorator';
 import { PERMISSAO_KEY } from '../decorators/permissao.decorator';
+import { NIVEL_MINIMO_KEY } from '../decorators/nivel-minimo.decorator';
 import type { JwtPayload } from '../types/jwt-payload';
 
 /**
@@ -15,8 +16,11 @@ import type { JwtPayload } from '../types/jwt-payload';
  *
  * Executa APOS o JwtAuthGuard (que autentica e popula req.user).
  * - Rotas publicas (@Publico): passam sem verificacao.
- * - Rotas sem @Permissao: protegidas por autenticacao, mas sem RBAC adicional.
+ * - Rotas sem @Permissao/@NivelMinimo: protegidas por autenticacao, sem RBAC extra.
+ * - Rotas com @NivelMinimo: exigem `perfilNivel >= nivel` (barreira por nivel).
  * - Rotas com @Permissao: exigem que o usuario possua TODAS as permissoes.
+ *
+ * Quando ambos estao presentes, os dois sao verificados (nivel E permissoes).
  */
 @Injectable()
 export class RbacGuard implements CanActivate {
@@ -33,7 +37,16 @@ export class RbacGuard implements CanActivate {
       string[] | undefined
     >(PERMISSAO_KEY, [context.getHandler(), context.getClass()]);
 
-    if (!permissoesRequeridas || permissoesRequeridas.length === 0) return true;
+    const nivelMinimo = this.reflector.getAllAndOverride<number | undefined>(
+      NIVEL_MINIMO_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+
+    const exigePermissoes = !!permissoesRequeridas && permissoesRequeridas.length > 0;
+    const exigeNivel = typeof nivelMinimo === 'number';
+
+    // Rota sem exigencia de RBAC: basta estar autenticada.
+    if (!exigePermissoes && !exigeNivel) return true;
 
     const req = context
       .switchToHttp()
@@ -41,12 +54,18 @@ export class RbacGuard implements CanActivate {
 
     if (!req.user) throw new ForbiddenException('Acesso negado.');
 
-    const temTodas = permissoesRequeridas.every((p) =>
-      req.user!.permissoes.includes(p),
-    );
+    // Barreira por NIVEL: independe das permissoes granulares.
+    if (exigeNivel && req.user.perfilNivel < nivelMinimo!) {
+      throw new ForbiddenException('Nível de acesso insuficiente para esta operação.');
+    }
 
-    if (!temTodas) {
-      throw new ForbiddenException('Permissão insuficiente para esta operação.');
+    if (exigePermissoes) {
+      const temTodas = permissoesRequeridas!.every((p) =>
+        req.user!.permissoes.includes(p),
+      );
+      if (!temTodas) {
+        throw new ForbiddenException('Permissão insuficiente para esta operação.');
+      }
     }
 
     return true;

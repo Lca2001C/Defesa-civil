@@ -11,6 +11,8 @@
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
+import { NivelMinimo } from '../../../common/decorators/nivel-minimo.decorator';
+import { PERMISSION_LEVEL } from '../../../shared/constants';
 import { CompetenciasService } from '../services/competencias.service';
 import { AtualizarCompetenciaDto } from '../dtos/atualizar-competencia.dto';
 import { CriarCompetenciaDto } from '../dtos/criar-competencia.dto';
@@ -23,6 +25,7 @@ export class CompetenciasController {
   constructor(private readonly service: CompetenciasService) {}
 
   @Post()
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('competencias.gerenciar')
   @ApiOperation({ summary: 'Cria uma nova competência (ciclo de coleta).' })
   criar(@Body() dto: CriarCompetenciaDto) {
@@ -43,6 +46,7 @@ export class CompetenciasController {
   }
 
   @Patch(':id')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('competencias.gerenciar')
   @ApiOperation({ summary: 'Atualiza nome, datas ou ano da competência.' })
   atualizar(@Param('id') id: string, @Body() dto: AtualizarCompetenciaDto) {
@@ -50,6 +54,7 @@ export class CompetenciasController {
   }
 
   @Patch(':id/abrir')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('competencias.gerenciar')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Transiciona a competência de PLANEJADA → ABERTA.' })
@@ -58,6 +63,7 @@ export class CompetenciasController {
   }
 
   @Patch(':id/encerrar')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('competencias.gerenciar')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Transiciona a competência de ABERTA → ENCERRADA.' })

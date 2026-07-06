@@ -102,11 +102,14 @@ const PERFIS: PerfilCatalogo[] = [
     codigo: "ANALISTA_ESTADUAL",
     nome: "Analista Estadual",
     nivel: 70,
-    // Cria/publica formularios (construtor visual) e revisa submissoes.
+    // Revisa/valida submissoes e exporta relatorios. NAO cria/publica formularios
+    // nem gerencia competencias: criar/editar/publicar/excluir formularios e
+    // abrir/encerrar competencias sao acoes do MODULO ADMIN, exclusivas de Gestor
+    // Estadual (80) e Super Admin (100). O backend impoe isso por NIVEL
+    // (@NivelMinimo nos controllers), entao esta remocao reflete o modelo — mas
+    // aplique via re-seed para manter as permissoes coerentes no banco.
     permissoes: [
       "painel.ver",
-      "formularios.criar",
-      "formularios.publicar",
       "submissoes.revisar",
       "submissoes.validar",
       "relatorios.exportar",

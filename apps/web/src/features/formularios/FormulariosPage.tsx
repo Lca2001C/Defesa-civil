@@ -25,7 +25,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../lib/auth-context";
-import { QUERY_KEYS } from "../../shared/constants";
+import { NIVEL_MODULO_ADMIN, QUERY_KEYS } from "../../shared/constants";
 import { FormulariosService } from "./services/formularios.service";
 import type { Formulario } from "./types";
 
@@ -41,7 +41,9 @@ export default function FormulariosPage() {
   const qc = useQueryClient();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const podeGerenciar = usuario?.permissoes.includes("formularios.criar") ?? false;
+  // Módulo admin: criar/excluir formulários é só de Gestor Estadual (80) e Super
+  // Admin (100). O backend impõe por nível (@NivelMinimo); aqui só ocultamos a UI.
+  const podeGerenciar = (usuario?.perfilNivel ?? 0) >= NIVEL_MODULO_ADMIN;
   const [excluindo, setExcluindo] = useState<Formulario | null>(null);
   const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 

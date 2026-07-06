@@ -14,6 +14,8 @@
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { FormularioStatus } from '@prisma/client';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
+import { NivelMinimo } from '../../../common/decorators/nivel-minimo.decorator';
+import { PERMISSION_LEVEL } from '../../../shared/constants';
 import { PaginacaoDto } from '../../../common/dto/paginacao.dto';
 import { AtualizarFormularioDto } from '../dtos/atualizar-formulario.dto';
 import { CriarFormularioDto } from '../dtos/criar-formulario.dto';
@@ -28,6 +30,7 @@ export class FormulariosController {
   constructor(private readonly service: FormulariosService) {}
 
   @Post()
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('formularios.criar')
   @ApiOperation({ summary: 'Cria um novo formulário (metadados + schema opcional na v1).' })
   criar(@Body() dto: CriarFormularioDto) {
@@ -55,6 +58,7 @@ export class FormulariosController {
   }
 
   @Post('from-template/:templateId')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('formularios.criar')
   @ApiOperation({ summary: 'Cria um formulário (rascunho) a partir de um template.' })
   criarDeTemplate(@Param('templateId') templateId: string) {
@@ -74,6 +78,7 @@ export class FormulariosController {
   }
 
   @Delete(':id')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('formularios.criar')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Exclui um formulário e todas as suas versões (bloqueado se houver submissões).' })
@@ -82,6 +87,7 @@ export class FormulariosController {
   }
 
   @Patch(':id')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('formularios.criar')
   @ApiOperation({ summary: 'Atualiza metadados do formulário.' })
   atualizar(@Param('id') id: string, @Body() dto: AtualizarFormularioDto) {
@@ -89,6 +95,7 @@ export class FormulariosController {
   }
 
   @Post(':id/versoes')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('formularios.criar')
   @ApiOperation({ summary: 'Cria uma nova versão (rascunho) a partir de um schema.' })
   criarVersao(@Param('id') id: string, @Body() dto: CriarVersaoDto) {
@@ -102,6 +109,7 @@ export class FormulariosController {
   }
 
   @Put(':id/versoes/:versaoId')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('formularios.criar')
   @ApiOperation({
     summary: 'Salva o schema editado na versão (cria nova versão se publicada com submissões).',
@@ -115,6 +123,7 @@ export class FormulariosController {
   }
 
   @Patch(':id/versoes/:versaoId/publicar')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('formularios.publicar')
   @ApiOperation({ summary: 'Publica uma versão vinculando-a a uma competência ABERTA.' })
   publicarVersao(
