@@ -26,6 +26,7 @@ describe('UsuariosService (regras de escopo/permissão)', () => {
     repo = {
       buscarDetalhado: jest.fn(),
       buscarPorId: jest.fn(),
+      atualizar: jest.fn(),
       invalidarSessoes: jest.fn(),
     } as unknown as jest.Mocked<UsuariosRepository>;
     service = new UsuariosService(repo);
@@ -42,5 +43,16 @@ describe('UsuariosService (regras de escopo/permissão)', () => {
     await expect(
       service.redefinirSenha('alvo', 'NovaSenha@2026', jwt({ sub: 'eu', perfilNivel: 50 })),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('atualizar nega alteração de perfil para usuário que não é SUPER_ADMIN', async () => {
+    await expect(
+      service.atualizar(
+        'alvo',
+        { perfilCodigo: 'GESTOR_ESTADUAL' },
+        jwt({ sub: 'eu', perfilNivel: 80 }),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(repo.atualizar).not.toHaveBeenCalled();
   });
 });

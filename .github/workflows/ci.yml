@@ -47,8 +47,11 @@ jobs:
         run: pnpm --filter @dcmg/api exec prisma generate
 
       # A API resolve @dcmg/contracts pelo dist (types) — buildar antes.
+      # DATABASE_URL não é usada de fato (só valida a sintaxe do schema).
       - name: Validar schema Prisma
         run: pnpm --filter @dcmg/api exec prisma validate
+        env:
+          DATABASE_URL: "postgresql://user:password@localhost:5432/dcmg?schema=public"
 
       - name: Build dos contratos
         run: pnpm --filter @dcmg/contracts run build
