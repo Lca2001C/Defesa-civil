@@ -116,15 +116,15 @@ export default function UsuariosTab() {
       </Stack>
 
       <TableContainer sx={{ width: "100%" }}>
-        <Table size="small" sx={{ minWidth: 800 }}>
+        <Table size="small" sx={{ minWidth: { xs: 0, md: 800 } }}>
           <TableHead>
             <TableRow>
               <TableCell>Nome</TableCell>
               <TableCell>E-mail</TableCell>
-              <TableCell>CPF</TableCell>
+              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>CPF</TableCell>
               <TableCell>Perfil</TableCell>
-              <TableCell>Escopo</TableCell>
-              <TableCell>Município / Regional</TableCell>
+              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Escopo</TableCell>
+              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Município / Regional</TableCell>
               <TableCell>Status</TableCell>
               <TableCell align="center">Ações</TableCell>
             </TableRow>
@@ -157,7 +157,7 @@ export default function UsuariosTab() {
                       {u.email}
                     </Typography>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                     <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
                       {mascaraCpf(u.cpf)}
                     </Typography>
@@ -170,10 +170,10 @@ export default function UsuariosTab() {
                       color={u.perfil.codigo === "COORDENADOR_COMPDEC" ? "warning" : "default"}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                     <Typography variant="body2">{u.escopo}</Typography>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                     <Typography variant="body2" color="text.secondary">
                       {u.municipio?.nome ?? u.regional?.nome ?? "—"}
                     </Typography>

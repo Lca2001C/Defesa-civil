@@ -81,15 +81,15 @@ export default function MunicipiosPage() {
       {/* tabela */}
       <Card>
         <TableContainer>
-          <Table size="small" sx={{ minWidth: 900 }}>
+          <Table size="small" sx={{ minWidth: { xs: 0, md: 900 } }}>
             <TableHead>
               <TableRow>
                 <TableCell>Código IBGE</TableCell>
                 <TableCell>Nome</TableCell>
                 <TableCell>Regional (REDEC)</TableCell>
-                <TableCell>Coordenador</TableCell>
-                <TableCell>Telefone</TableCell>
-                <TableCell>E-mail</TableCell>
+                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Coordenador</TableCell>
+                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Telefone</TableCell>
+                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>E-mail</TableCell>
                 <TableCell>COMPDEC</TableCell>
                 {podeGerenciar && <TableCell align="center">Ação</TableCell>}
               </TableRow>
@@ -127,17 +127,17 @@ export default function MunicipiosPage() {
                         {m.regional?.nome ?? "—"}
                       </Typography>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                       <Typography variant="body2">
                         {m.compdec?.coordenadorNome ?? "—"}
                       </Typography>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                       <Typography variant="body2" color="text.secondary">
                         {m.compdec?.telefone ?? "—"}
                       </Typography>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                       <Typography variant="body2" color="text.secondary">
                         {m.compdec?.email ?? "—"}
                       </Typography>

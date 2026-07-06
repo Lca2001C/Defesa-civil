@@ -264,7 +264,7 @@ export default function PainelPage() {
           cor={cores.vermelhoErro}
           descricao="Municípios sem nenhuma resposta"
         />
-        <Card sx={{ flex: "1 1 200px", minWidth: 180 }}>
+        <Card sx={{ flex: "1 1 200px", minWidth: { xs: "100%", sm: 180 } }}>
           <CardContent>
             <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
               Cobertura estadual

@@ -50,12 +50,12 @@ function LinhaLog({ log }: { log: LogAuditoria }) {
         <TableCell>
           <Typography variant="body2">{log.entidade}</Typography>
         </TableCell>
-        <TableCell>
+        <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
           <Typography variant="caption" sx={{ fontFamily: "monospace" }}>
             {log.entidadeId ?? "—"}
           </Typography>
         </TableCell>
-        <TableCell>
+        <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
           <Typography variant="caption" color="text.secondary">
             {log.ip ?? "—"}
           </Typography>
@@ -154,15 +154,15 @@ export default function AuditoriaTab() {
       </Stack>
 
       <TableContainer>
-        <Table size="small">
+        <Table size="small" sx={{ minWidth: { xs: 0, sm: 720 } }}>
           <TableHead>
             <TableRow>
               <TableCell>Data/Hora</TableCell>
               <TableCell>Ator</TableCell>
               <TableCell>Ação</TableCell>
               <TableCell>Entidade</TableCell>
-              <TableCell>ID</TableCell>
-              <TableCell>IP</TableCell>
+              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>ID</TableCell>
+              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>IP</TableCell>
               <TableCell align="center">Detalhes</TableCell>
             </TableRow>
           </TableHead>

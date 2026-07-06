@@ -322,14 +322,14 @@ export default function SubmissoesPage() {
         <Paper variant="outlined">
           {isFetching && <LinearProgress />}
           <TableContainer sx={{ width: "100%", overflowX: "auto" }}>
-            <Table size="small" stickyHeader sx={{ minWidth: 720 }}>
+            <Table size="small" stickyHeader sx={{ minWidth: { xs: 0, md: 720 } }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Protocolo</TableCell>
                   <TableCell>Município</TableCell>
-                  <TableCell>Formulário</TableCell>
-                  <TableCell>Competência</TableCell>
-                  <TableCell>Respondente</TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Formulário</TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Competência</TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Respondente</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Criado / Enviado</TableCell>
                   <TableCell align="center">
@@ -360,14 +360,18 @@ export default function SubmissoesPage() {
                           ({s.municipio.id})
                         </Typography>
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                         {s.formularioVersao.formulario.nome}{" "}
                         <Typography component="span" variant="caption" color="text.secondary">
                           v{s.formularioVersao.versao}
                         </Typography>
                       </TableCell>
-                      <TableCell>{s.competencia?.nome ?? "—"}</TableCell>
-                      <TableCell>{s.nomeRespondente}</TableCell>
+                      <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                        {s.competencia?.nome ?? "—"}
+                      </TableCell>
+                      <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                        {s.nomeRespondente}
+                      </TableCell>
                       <TableCell>
                         <Chip
                           label={LABEL_STATUS[s.status] ?? s.status}
@@ -417,8 +421,12 @@ export default function SubmissoesPage() {
             rowsPerPage={porPagina}
             onRowsPerPageChange={(e) => setPorPagina(parseInt(e.target.value, 10))}
             rowsPerPageOptions={[10, 25, 50, 100]}
-            labelRowsPerPage="Por página"
+            labelRowsPerPage={isMobile ? "Linhas:" : "Por página"}
             labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+            sx={{
+              ".MuiTablePagination-toolbar": { flexWrap: "wrap", rowGap: 0.5 },
+              ".MuiTablePagination-actions": { ml: { xs: 0, sm: 2 } },
+            }}
           />
         </Paper>
       )}
