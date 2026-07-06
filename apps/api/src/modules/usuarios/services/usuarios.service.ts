@@ -138,12 +138,14 @@ export class UsuariosService {
   async atualizar(id: string, dto: AtualizarUsuarioDto, usuario: JwtPayload) {
     this.exigirGestaoUsuarios(usuario);
     this.verificarEscopo(id, usuario);
+    // Autorização antes de qualquer busca no banco: troca de perfil é exclusiva do SUPER_ADMIN.
+    if (dto.perfilCodigo) {
+      this.exigirSuperAdmin(usuario, 'alterar o perfil (nível de permissão) de um usuário');
+    }
     await this.buscarOuFalhar(id);
 
     let perfilId: string | undefined;
     if (dto.perfilCodigo) {
-      // Mudar o nível de permissão (perfil) é exclusivo do SUPER_ADMIN.
-      this.exigirSuperAdmin(usuario, 'alterar o perfil (nível de permissão) de um usuário');
       const perfilAlvo = await this.repo.buscarPerfilPorCodigo(dto.perfilCodigo);
       if (!perfilAlvo) throw new NotFoundException(`Perfil "${dto.perfilCodigo}" não encontrado.`);
       // Anti-escalonamento: não promover a um nível acima do próprio.
