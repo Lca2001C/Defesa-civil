@@ -6,6 +6,7 @@ import {
   FormControlLabel,
   IconButton,
   MenuItem,
+  Paper,
   Stack,
   TextField,
   Typography,
@@ -20,18 +21,39 @@ import {
   OperadorCondicional,
   AcaoCondicional,
 } from "@dcmg/contracts";
-import { FONTES_AUTOMATICAS, TIPOS, TIPOS_COM_OPCOES } from "./tipos";
+import {
+  FONTES_AUTOMATICAS,
+  TIPOS,
+  TIPOS_COM_OPCOES,
+  TIPOS_PROIBIDOS_EM_GRUPO,
+  criarSubpergunta,
+} from "./tipos";
+
+const VALOR_OUTRO = "outro";
 
 interface Props {
   pergunta: Pergunta;
   /** Outras perguntas do formulário (para configurar regras condicionais). */
   outras: Pergunta[];
   onChange: (p: Pergunta) => void;
+  /** True quando esta é uma SUBPERGUNTA dentro de um grupo repetível. */
+  emGrupo?: boolean;
 }
 
-export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
+export function PerguntaEditor({ pergunta, outras, onChange, emGrupo = false }: Props) {
   const set = (patch: Partial<Pergunta>) => onChange({ ...pergunta, ...patch });
   const temOpcoes = TIPOS_COM_OPCOES.includes(pergunta.tipo);
+  const ehGrupo = pergunta.tipo === TipoPergunta.GRUPO;
+  const ehLista = pergunta.tipo === TipoPergunta.LISTA_SUSPENSA;
+  const temOutro = (pergunta.opcoes ?? []).some((o) => o.valor === VALOR_OUTRO);
+
+  // Dentro de um grupo, os tipos GRUPO/UPLOAD/AUTOMATICO não são permitidos.
+  const tiposDisponiveis = emGrupo
+    ? TIPOS.filter((t) => !TIPOS_PROIBIDOS_EM_GRUPO.includes(t.tipo))
+    : TIPOS;
+
+  // Perguntas NUMERO (fora de grupos) elegíveis para controlar a quantidade.
+  const perguntasNumero = outras.filter((p) => p.tipo === TipoPergunta.NUMERO);
 
   function setOpcao(i: number, patch: Partial<OpcaoPergunta>) {
     const opcoes = [...(pergunta.opcoes ?? [])];
@@ -44,6 +66,18 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
   }
   function removerOpcao(i: number) {
     set({ opcoes: (pergunta.opcoes ?? []).filter((_, idx) => idx !== i) });
+  }
+
+  /**
+   * Alterna a opção "Outro(s)". A pergunta de especificação obrigatória
+   * (quando o usuário escolhe "Outro") é gerada automaticamente na IMPORTAÇÃO
+   * via Excel; no builder, adicione um campo de texto condicional se precisar.
+   */
+  function toggleOutro(ativar: boolean) {
+    const semOutro = (pergunta.opcoes ?? []).filter((o) => o.valor !== VALOR_OUTRO);
+    set({
+      opcoes: ativar ? [...semOutro, { valor: VALOR_OUTRO, rotulo: "Outro(s)" }] : semOutro,
+    });
   }
 
   function addRegra() {
@@ -66,6 +100,19 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
     set({ regras: (pergunta.regras ?? []).filter((_, idx) => idx !== i) });
   }
 
+  // ── Subperguntas do GRUPO ──────────────────────────────────────────────────
+  function setSubpergunta(i: number, nova: Pergunta) {
+    const perguntas = [...(pergunta.perguntas ?? [])];
+    perguntas[i] = nova;
+    set({ perguntas });
+  }
+  function addSubpergunta() {
+    set({ perguntas: [...(pergunta.perguntas ?? []), criarSubpergunta()] });
+  }
+  function removerSubpergunta(i: number) {
+    set({ perguntas: (pergunta.perguntas ?? []).filter((_, idx) => idx !== i) });
+  }
+
   return (
     <Stack spacing={2} sx={{ mt: 1 }}>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
@@ -84,7 +131,7 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
           size="small"
           sx={{ width: { xs: "100%", sm: 180 }, minWidth: { sm: 180 } }}
         >
-          {TIPOS.map((t) => (
+          {tiposDisponiveis.map((t) => (
             <MenuItem key={t.tipo} value={t.tipo}>
               {t.rotulo}
             </MenuItem>
@@ -110,6 +157,8 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
           value={pergunta.ajuda ?? ""}
           onChange={(e) => set({ ajuda: e.target.value })}
           size="small"
+          multiline
+          maxRows={4}
           sx={{ flex: 1, minWidth: 0 }}
         />
         <FormControlLabel
@@ -141,11 +190,36 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
         </TextField>
       )}
 
+      {ehLista && (
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={!!pergunta.multipla}
+              onChange={(e) => set({ multipla: e.target.checked })}
+              size="small"
+            />
+          }
+          label="Permitir selecionar mais de uma opção (múltipla seleção)"
+        />
+      )}
+
       {temOpcoes && (
         <Box>
-          <Typography variant="subtitle2" gutterBottom>
-            Opções
-          </Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="subtitle2" gutterBottom>
+              Opções
+            </Typography>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={temOutro}
+                  onChange={(e) => toggleOutro(e.target.checked)}
+                  size="small"
+                />
+              }
+              label={'Incluir opção "Outro(s)"'}
+            />
+          </Stack>
           <Stack spacing={1}>
             {(pergunta.opcoes ?? []).map((o, i) => (
               <Stack key={i} direction="row" spacing={1} alignItems="center">
@@ -158,8 +232,14 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
                   }}
                   size="small"
                   fullWidth
+                  disabled={o.valor === VALOR_OUTRO}
                 />
-                <IconButton size="small" color="error" onClick={() => removerOpcao(i)}>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => removerOpcao(i)}
+                  disabled={o.valor === VALOR_OUTRO}
+                >
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </Stack>
@@ -171,80 +251,166 @@ export function PerguntaEditor({ pergunta, outras, onChange }: Props) {
         </Box>
       )}
 
-      <Divider />
-
-      <Box>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="subtitle2">Lógica condicional</Typography>
-          <Button
-            startIcon={<AddIcon />}
-            size="small"
-            onClick={addRegra}
-            disabled={outras.length === 0}
-          >
-            Adicionar regra
-          </Button>
-        </Stack>
-        {(pergunta.regras ?? []).length === 0 && (
-          <Typography variant="caption" color="text.secondary">
-            Sempre visível. Adicione uma regra para mostrar/ocultar conforme outra resposta.
+      {ehGrupo && (
+        <Box>
+          <Divider sx={{ mb: 2 }} />
+          <Typography variant="subtitle2" gutterBottom>
+            Configuração do grupo repetível
           </Typography>
-        )}
-        <Stack spacing={1} sx={{ mt: 1 }}>
-          {(pergunta.regras ?? []).map((r, i) => (
-            <Stack key={i} direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-              <TextField
-                select
-                label="Ação"
-                value={r.acao}
-                onChange={(e) => setRegra(i, { acao: e.target.value as AcaoCondicional })}
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <TextField
+              select
+              label="Quantidade controlada por"
+              value={pergunta.quantidadeOrigemCodigo ?? ""}
+              onChange={(e) =>
+                set({ quantidadeOrigemCodigo: e.target.value || undefined })
+              }
+              size="small"
+              helperText="Pergunta numérica que define quantos registros abrir"
+              sx={{ flex: 1, minWidth: { sm: 220 } }}
+            >
+              <MenuItem value="">Repetição manual (Adicionar/Remover)</MenuItem>
+              {perguntasNumero.map((p) => (
+                <MenuItem key={p.codigo} value={p.codigo}>
+                  {p.rotulo}
+                </MenuItem>
+              ))}
+            </TextField>
+            {!pergunta.quantidadeOrigemCodigo && (
+              <>
+                <TextField
+                  label="Mín. registros"
+                  type="number"
+                  value={pergunta.minInstancias ?? ""}
+                  onChange={(e) =>
+                    set({ minInstancias: e.target.value ? Number(e.target.value) : undefined })
+                  }
+                  size="small"
+                  sx={{ width: { xs: "100%", sm: 140 } }}
+                />
+                <TextField
+                  label="Máx. registros"
+                  type="number"
+                  value={pergunta.maxInstancias ?? ""}
+                  onChange={(e) =>
+                    set({ maxInstancias: e.target.value ? Number(e.target.value) : undefined })
+                  }
+                  size="small"
+                  sx={{ width: { xs: "100%", sm: 140 } }}
+                />
+              </>
+            )}
+          </Stack>
+
+          <Typography variant="subtitle2" sx={{ mt: 2 }} gutterBottom>
+            Subperguntas do registro
+          </Typography>
+          <Stack spacing={1.5}>
+            {(pergunta.perguntas ?? []).map((sub, i) => (
+              <Paper key={sub.codigo} variant="outlined" sx={{ p: 1.5 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="caption" color="text.secondary">
+                    Subpergunta {i + 1}
+                  </Typography>
+                  <IconButton size="small" color="error" onClick={() => removerSubpergunta(i)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+                {/* Recursão restrita: outras = demais subperguntas + perguntas
+                    top-level (regras podem referenciar ambos). */}
+                <PerguntaEditor
+                  pergunta={sub}
+                  outras={[...(pergunta.perguntas ?? []).filter((_, idx) => idx !== i), ...outras]}
+                  onChange={(np) => setSubpergunta(i, np)}
+                  emGrupo
+                />
+              </Paper>
+            ))}
+            <Button startIcon={<AddIcon />} size="small" onClick={addSubpergunta} sx={{ alignSelf: "flex-start" }}>
+              Adicionar subpergunta
+            </Button>
+          </Stack>
+        </Box>
+      )}
+
+      {/* Lógica condicional não se aplica ao próprio GRUPO (só a campos comuns). */}
+      {!ehGrupo && (
+        <>
+          <Divider />
+          <Box>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle2">Lógica condicional</Typography>
+              <Button
+                startIcon={<AddIcon />}
                 size="small"
-                sx={{ flex: "1 1 110px", minWidth: { xs: "100%", sm: 110 } }}
+                onClick={addRegra}
+                disabled={outras.length === 0}
               >
-                <MenuItem value={AcaoCondicional.MOSTRAR}>Mostrar</MenuItem>
-                <MenuItem value={AcaoCondicional.OCULTAR}>Ocultar</MenuItem>
-              </TextField>
-              <Typography variant="body2">se</Typography>
-              <TextField
-                select
-                label="Pergunta"
-                value={r.origemCodigo}
-                onChange={(e) => setRegra(i, { origemCodigo: e.target.value })}
-                size="small"
-                sx={{ flex: "1 1 160px", minWidth: { xs: "100%", sm: 160 } }}
-              >
-                {outras.map((p) => (
-                  <MenuItem key={p.codigo} value={p.codigo}>
-                    {p.rotulo}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                select
-                label="Operador"
-                value={r.operador}
-                onChange={(e) => setRegra(i, { operador: e.target.value as OperadorCondicional })}
-                size="small"
-                sx={{ flex: "1 1 120px", minWidth: { xs: "100%", sm: 120 } }}
-              >
-                <MenuItem value={OperadorCondicional.IGUAL}>igual a</MenuItem>
-                <MenuItem value={OperadorCondicional.DIFERENTE}>diferente de</MenuItem>
-              </TextField>
-              <TextField
-                label="Valor"
-                value={r.valor}
-                onChange={(e) => setRegra(i, { valor: e.target.value })}
-                size="small"
-                helperText="Sim/Não use true/false"
-                sx={{ flex: "1 1 120px", minWidth: { xs: "100%", sm: 120 } }}
-              />
-              <IconButton size="small" color="error" onClick={() => removerRegra(i)}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
+                Adicionar regra
+              </Button>
             </Stack>
-          ))}
-        </Stack>
-      </Box>
+            {(pergunta.regras ?? []).length === 0 && (
+              <Typography variant="caption" color="text.secondary">
+                Sempre visível. Adicione uma regra para mostrar/ocultar conforme outra resposta.
+              </Typography>
+            )}
+            <Stack spacing={1} sx={{ mt: 1 }}>
+              {(pergunta.regras ?? []).map((r, i) => (
+                <Stack key={i} direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <TextField
+                    select
+                    label="Ação"
+                    value={r.acao}
+                    onChange={(e) => setRegra(i, { acao: e.target.value as AcaoCondicional })}
+                    size="small"
+                    sx={{ flex: "1 1 110px", minWidth: { xs: "100%", sm: 110 } }}
+                  >
+                    <MenuItem value={AcaoCondicional.MOSTRAR}>Mostrar</MenuItem>
+                    <MenuItem value={AcaoCondicional.OCULTAR}>Ocultar</MenuItem>
+                  </TextField>
+                  <Typography variant="body2">se</Typography>
+                  <TextField
+                    select
+                    label="Pergunta"
+                    value={r.origemCodigo}
+                    onChange={(e) => setRegra(i, { origemCodigo: e.target.value })}
+                    size="small"
+                    sx={{ flex: "1 1 160px", minWidth: { xs: "100%", sm: 160 } }}
+                  >
+                    {outras.map((p) => (
+                      <MenuItem key={p.codigo} value={p.codigo}>
+                        {p.rotulo}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    select
+                    label="Operador"
+                    value={r.operador}
+                    onChange={(e) => setRegra(i, { operador: e.target.value as OperadorCondicional })}
+                    size="small"
+                    sx={{ flex: "1 1 120px", minWidth: { xs: "100%", sm: 120 } }}
+                  >
+                    <MenuItem value={OperadorCondicional.IGUAL}>igual a</MenuItem>
+                    <MenuItem value={OperadorCondicional.DIFERENTE}>diferente de</MenuItem>
+                  </TextField>
+                  <TextField
+                    label="Valor"
+                    value={r.valor}
+                    onChange={(e) => setRegra(i, { valor: e.target.value })}
+                    size="small"
+                    helperText="Sim/Não use true/false"
+                    sx={{ flex: "1 1 120px", minWidth: { xs: "100%", sm: 120 } }}
+                  />
+                  <IconButton size="small" color="error" onClick={() => removerRegra(i)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              ))}
+            </Stack>
+          </Box>
+        </>
+      )}
     </Stack>
   );
 }

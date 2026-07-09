@@ -59,8 +59,10 @@ jobs:
       - name: Typecheck (api • web • contracts)
         run: pnpm -r typecheck
 
-      - name: Testes (api)
-        run: pnpm --filter @dcmg/api test
+      - name: Testes (contracts • api)
+        run: |
+          pnpm --filter @dcmg/contracts test
+          pnpm --filter @dcmg/api test
 
       - name: Build (contracts • api • web)
         run: pnpm -r build

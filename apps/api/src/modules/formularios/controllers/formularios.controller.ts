@@ -10,9 +10,16 @@
   Post,
   Put,
   Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import type { Response, Express } from 'express';
 import { FormularioStatus } from '@prisma/client';
+import { BadRequestException } from '@nestjs/common';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
 import { NivelMinimo } from '../../../common/decorators/nivel-minimo.decorator';
 import { PERMISSION_LEVEL } from '../../../shared/constants';
@@ -22,6 +29,9 @@ import { CriarFormularioDto } from '../dtos/criar-formulario.dto';
 import { CriarVersaoDto } from '../dtos/criar-versao.dto';
 import { PublicarVersaoDto } from '../dtos/publicar-versao.dto';
 import { FormulariosService } from '../services/formularios.service';
+
+/** Limite do upload da planilha (.xlsx é pequeno; evita abuso do parser). */
+const MAX_XLSX_BYTES = 5 * 1024 * 1024;
 
 @ApiBearerAuth()
 @ApiTags('formularios')
@@ -69,6 +79,41 @@ export class FormulariosController {
   @ApiOperation({ summary: 'Lista os blocos reutilizáveis (para o construtor).' })
   listarBlocos() {
     return this.service.listarBlocos();
+  }
+
+  // ── Importação via Excel (planilha-modelo do sistema) ──────────────────────
+
+  @Get('modelo-importacao')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
+  @Permissao('formularios.criar')
+  @ApiOperation({ summary: 'Baixa a planilha-modelo (.xlsx) para importar um formulário.' })
+  async baixarModeloImportacao(@Res() res: Response) {
+    const buffer = await this.service.gerarModeloImportacao();
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="modelo-formulario-compdec.xlsx"',
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Post('importar-excel')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
+  @Permissao('formularios.criar')
+  @UseInterceptors(
+    FileInterceptor('arquivo', {
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_XLSX_BYTES },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Cria um formulário (rascunho) a partir de uma planilha Excel.' })
+  importarExcel(@UploadedFile() arquivo: Express.Multer.File) {
+    if (!arquivo) throw new BadRequestException('Envie a planilha (.xlsx) no campo "arquivo".');
+    if (!/\.xlsx$/i.test(arquivo.originalname)) {
+      throw new BadRequestException('O arquivo deve ser .xlsx (planilha-modelo do sistema).');
+    }
+    return this.service.importarExcel(arquivo.buffer);
   }
 
   @Get(':id')

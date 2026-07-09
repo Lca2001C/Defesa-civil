@@ -34,6 +34,16 @@ export function mascaraTelefone(v: string): string {
   return d.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d{1,4})$/, "$1-$2");
 }
 
+/** MM/AAAA (competência mensal). */
+export function mascaraMesAno(v: string): string {
+  return soDigitos(v).slice(0, 6).replace(/(\d{2})(\d{1,4})$/, "$1/$2");
+}
+
+/** Ano com 4 dígitos. */
+export function mascaraAno(v: string): string {
+  return soDigitos(v).slice(0, 4);
+}
+
 /** Aplica a máscara conforme o tipo da pergunta; retorna o valor formatado. */
 export function aplicarMascara(tipo: TipoPergunta, valor: string): string {
   switch (tipo) {
@@ -45,23 +55,14 @@ export function aplicarMascara(tipo: TipoPergunta, valor: string): string {
       return mascaraCep(valor);
     case TipoPergunta.TELEFONE:
       return mascaraTelefone(valor);
+    case TipoPergunta.MES_ANO:
+      return mascaraMesAno(valor);
+    case TipoPergunta.ANO:
+      return mascaraAno(valor);
     default:
       return valor;
   }
 }
 
-/** Valida CPF (dígitos verificadores). */
-export function cpfValido(cpf: string): boolean {
-  const d = soDigitos(cpf);
-  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
-  let soma = 0;
-  for (let i = 0; i < 9; i++) soma += parseInt(d[i]!, 10) * (10 - i);
-  let resto = (soma * 10) % 11;
-  if (resto === 10) resto = 0;
-  if (resto !== parseInt(d[9]!, 10)) return false;
-  soma = 0;
-  for (let i = 0; i < 10; i++) soma += parseInt(d[i]!, 10) * (11 - i);
-  resto = (soma * 10) % 11;
-  if (resto === 10) resto = 0;
-  return resto === parseInt(d[10]!, 10);
-}
+// Validação de CPF: a implementação canônica vive na validação isomórfica.
+export { cpfValido } from "@dcmg/contracts";

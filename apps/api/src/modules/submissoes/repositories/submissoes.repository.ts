@@ -295,6 +295,14 @@ export class SubmissoesRepository {
     await this.prisma.anexoSubmissao.delete({ where: { id: anexoId } });
   }
 
+  /**
+   * Respostas atuais da submissão como { codigo: valor } — usado pela
+   * validação server-side no envio (mescladas com o payload do cliente).
+   */
+  lerRespostas(submissaoId: string): Promise<Record<string, unknown>> {
+    return this.lerDados(this.prisma, submissaoId);
+  }
+
   // ── Helpers privados ─────────────────────────────────────────────────────
 
   /** Lê as respostas atuais como { codigo: valor }. */

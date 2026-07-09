@@ -1,5 +1,6 @@
 import type { SchemaFormulario } from "@dcmg/contracts";
 import { api } from "../../../lib/api";
+import { baixarArquivoAutenticado } from "../../../lib/download";
 import type {
   ListagemFormularios,
   Template,
@@ -25,6 +26,21 @@ export const FormulariosService = {
 
   criarDeTemplate: (templateId: string) =>
     api.post<CriacaoResp>(`/formularios/from-template/${templateId}`),
+
+  /** Baixa a planilha-modelo (.xlsx) para preencher e importar. */
+  baixarModeloImportacao: () =>
+    baixarArquivoAutenticado(
+      "/formularios/modelo-importacao",
+      "modelo-formulario-compdec.xlsx",
+      { method: "GET" },
+    ),
+
+  /** Importa um formulário a partir de uma planilha (.xlsx). */
+  importarExcel: (arquivo: File) => {
+    const form = new FormData();
+    form.append("arquivo", arquivo);
+    return api.post<CriacaoResp>("/formularios/importar-excel", form);
+  },
 
   buscar: (id: string) => api.get<FormularioDetalheData>(`/formularios/${id}`),
 

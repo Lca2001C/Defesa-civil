@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
-import { TipoPergunta } from '@dcmg/contracts';
-import type { Pergunta, SchemaFormulario } from '@dcmg/contracts';
+import { formatarResposta } from '@dcmg/contracts';
+import type { SchemaFormulario } from '@dcmg/contracts';
 import { mascaraCpf } from '../../../shared/utils/format.util';
 
 /** Dados necessários para gerar o documento de uma submissão (PDF/Excel). */
@@ -43,32 +43,6 @@ function formatarData(valor: Date | string | null): string {
   return new Date(valor).toLocaleString('pt-BR');
 }
 
-/** Converte o valor bruto de uma resposta em texto legível conforme o tipo. */
-function formatarValor(pergunta: Pergunta, valor: unknown): string {
-  if (valor === null || valor === undefined || valor === '') return '—';
-
-  switch (pergunta.tipo) {
-    case TipoPergunta.SIM_NAO:
-      return valor === true || valor === 'true' ? 'Sim' : 'Não';
-    case TipoPergunta.LISTA_SUSPENSA:
-    case TipoPergunta.RADIO: {
-      const opcao = pergunta.opcoes?.find((o) => o.valor === String(valor));
-      return opcao?.rotulo ?? String(valor);
-    }
-    case TipoPergunta.CHECKBOX: {
-      const lista = Array.isArray(valor) ? valor : [valor];
-      const rotulos = lista.map(
-        (v) => pergunta.opcoes?.find((o) => o.valor === String(v))?.rotulo ?? String(v),
-      );
-      return rotulos.length ? rotulos.join(', ') : '—';
-    }
-    case TipoPergunta.UPLOAD:
-      return 'Arquivo anexado';
-    default:
-      return String(valor);
-  }
-}
-
 /** Achata o schema composto em seções com pares rótulo→valor preenchidos. */
 function coletarSecoes(schema: SchemaFormulario, dados: Record<string, unknown>): SecaoExport[] {
   const secoes = schema.paginas?.length
@@ -79,7 +53,8 @@ function coletarSecoes(schema: SchemaFormulario, dados: Record<string, unknown>)
     titulo: secao.titulo,
     campos: (secao.perguntas ?? []).map((pergunta) => ({
       rotulo: pergunta.rotulo,
-      valor: formatarValor(pergunta, dados[pergunta.codigo]),
+      // Formatação isomórfica (mesma do web) — trata GRUPO/MUNICIPIO/múltipla.
+      valor: formatarResposta(pergunta, dados[pergunta.codigo]),
     })),
   }));
 }

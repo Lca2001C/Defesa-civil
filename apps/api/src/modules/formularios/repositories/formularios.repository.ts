@@ -208,6 +208,12 @@ export class FormulariosRepository {
     db: PrismaService | Prisma.TransactionClient,
     versaoId: string,
   ): Promise<SchemaFormulario> {
+    // Include das perguntas com opcoes + regras, reutilizado para subperguntas.
+    const includePergunta = {
+      opcoes: { orderBy: { ordem: 'asc' as const } },
+      regrasComoAlvo: { include: { origem: { select: { codigo: true } } } },
+    };
+
     const versao = await db.formularioVersao.findUniqueOrThrow({
       where: { id: versaoId },
       include: {
@@ -218,10 +224,13 @@ export class FormulariosRepository {
               orderBy: { ordem: 'asc' },
               include: {
                 perguntas: {
+                  // Subperguntas de GRUPO nao aparecem direto na secao: elas
+                  // sao aninhadas em `perguntas` da pergunta-grupo.
+                  where: { grupoPaiId: null },
                   orderBy: { ordem: 'asc' },
                   include: {
-                    opcoes: { orderBy: { ordem: 'asc' } },
-                    regrasComoAlvo: { include: { origem: { select: { codigo: true } } } },
+                    ...includePergunta,
+                    subperguntas: { orderBy: { ordem: 'asc' }, include: includePergunta },
                   },
                 },
               },
@@ -229,6 +238,43 @@ export class FormulariosRepository {
           },
         },
       },
+    });
+
+    type LinhaPergunta = (typeof versao.paginas)[number]['secoes'][number]['perguntas'][number];
+    type LinhaSubpergunta = LinhaPergunta['subperguntas'][number];
+
+    const mapearPergunta = (p: LinhaPergunta | LinhaSubpergunta): Pergunta => ({
+      id: p.id,
+      codigo: p.codigo,
+      rotulo: p.rotulo,
+      tipo: p.tipo as Pergunta['tipo'],
+      obrigatorio: p.obrigatorio,
+      ajuda: p.ajuda ?? undefined,
+      ordem: p.ordem,
+      fonteAutomatica: (p.fonteAutomatica ?? undefined) as Pergunta['fonteAutomatica'],
+      multipla: p.multipla || undefined,
+      quantidadeOrigemCodigo: p.quantidadeOrigemCodigo ?? undefined,
+      minInstancias: p.minInstancias ?? undefined,
+      maxInstancias: p.maxInstancias ?? undefined,
+      validacoes: {
+        min: p.min ?? undefined,
+        max: p.max ?? undefined,
+        padrao: p.padrao ?? undefined,
+        tamanhoMaximoMb: p.tamanhoMaximoMb ?? undefined,
+        tiposArquivo: p.tiposArquivo.length ? p.tiposArquivo : undefined,
+      },
+      opcoes: p.opcoes.map((o) => ({ valor: o.valor, rotulo: o.rotulo, ordem: o.ordem })),
+      regras: p.regrasComoAlvo.map((r) => ({
+        origemCodigo: r.origem.codigo,
+        operador: r.operador as RegraCondicional['operador'],
+        valor: r.valor,
+        acao: r.acao as RegraCondicional['acao'],
+      })),
+      // Subperguntas do GRUPO, aninhadas (ausente nos demais tipos).
+      perguntas:
+        'subperguntas' in p && p.subperguntas.length
+          ? p.subperguntas.map((sub) => mapearPergunta(sub))
+          : undefined,
     });
 
     return {
@@ -243,30 +289,7 @@ export class FormulariosRepository {
           titulo: s.titulo,
           descricao: s.descricao ?? undefined,
           ordem: s.ordem,
-          perguntas: s.perguntas.map((p) => ({
-            id: p.id,
-            codigo: p.codigo,
-            rotulo: p.rotulo,
-            tipo: p.tipo as Pergunta['tipo'],
-            obrigatorio: p.obrigatorio,
-            ajuda: p.ajuda ?? undefined,
-            ordem: p.ordem,
-            fonteAutomatica: (p.fonteAutomatica ?? undefined) as Pergunta['fonteAutomatica'],
-            validacoes: {
-              min: p.min ?? undefined,
-              max: p.max ?? undefined,
-              padrao: p.padrao ?? undefined,
-              tamanhoMaximoMb: p.tamanhoMaximoMb ?? undefined,
-              tiposArquivo: p.tiposArquivo.length ? p.tiposArquivo : undefined,
-            },
-            opcoes: p.opcoes.map((o) => ({ valor: o.valor, rotulo: o.rotulo, ordem: o.ordem })),
-            regras: p.regrasComoAlvo.map((r) => ({
-              origemCodigo: r.origem.codigo,
-              operador: r.operador as RegraCondicional['operador'],
-              valor: r.valor,
-              acao: r.acao as RegraCondicional['acao'],
-            })),
-          })),
+          perguntas: s.perguntas.map((p) => mapearPergunta(p)),
         })),
       })),
     };
@@ -281,7 +304,102 @@ export class FormulariosRepository {
     await tx.pagina.deleteMany({ where: { versaoId } });
 
     const codigoParaId = new Map<string, string>();
+    // Tipo por codigo APENAS de perguntas top-level (subperguntas de grupo nao
+    // podem controlar quantidades — cada instancia teria um valor distinto).
+    const tipoTopLevelPorCodigo = new Map<string, string>();
     const regrasPendentes: { alvoCodigo: string; regra: RegraCondicional }[] = [];
+    // Grupos com quantidade controlada: validados apos gravar tudo (a pergunta
+    // NUMERO controladora pode vir depois do grupo no schema).
+    const quantidadesPendentes: { grupoCodigo: string; origemCodigo: string }[] = [];
+
+    /** Grava uma pergunta (top-level ou subpergunta de GRUPO). */
+    const criarPergunta = async (
+      p: Pergunta,
+      secaoId: string,
+      ordem: number,
+      grupoPaiId: string | null,
+      contexto: string,
+    ): Promise<void> => {
+      if (!p.codigo) {
+        throw new BadRequestException(`Pergunta sem 'codigo' em ${contexto}.`);
+      }
+      // Unicidade GLOBAL (inclui subperguntas): os codigos sao as chaves das
+      // respostas e das regras condicionais em todo o schema.
+      if (codigoParaId.has(p.codigo)) {
+        throw new BadRequestException(`Código de pergunta duplicado: "${p.codigo}".`);
+      }
+
+      const ehGrupo = p.tipo === 'GRUPO';
+      if (ehGrupo && grupoPaiId) {
+        throw new BadRequestException(
+          `Grupo "${p.codigo}": grupos repetíveis não podem conter outros grupos.`,
+        );
+      }
+      if (grupoPaiId && (p.tipo === 'UPLOAD' || p.tipo === 'AUTOMATICO')) {
+        throw new BadRequestException(
+          `Subpergunta "${p.codigo}": os tipos UPLOAD e AUTOMATICO não são suportados dentro de grupos repetíveis.`,
+        );
+      }
+      if (ehGrupo && !p.perguntas?.length) {
+        throw new BadRequestException(`Grupo "${p.codigo}" precisa de ao menos uma subpergunta.`);
+      }
+
+      const pergunta = await tx.pergunta.create({
+        data: {
+          secaoId,
+          ordem,
+          codigo: p.codigo,
+          rotulo: p.rotulo,
+          tipo: p.tipo,
+          obrigatorio: !!p.obrigatorio,
+          ajuda: p.ajuda ?? null,
+          min: p.validacoes?.min ?? null,
+          max: p.validacoes?.max ?? null,
+          padrao: p.validacoes?.padrao ?? null,
+          tamanhoMaximoMb: p.validacoes?.tamanhoMaximoMb ?? null,
+          tiposArquivo: p.validacoes?.tiposArquivo ?? [],
+          fonteAutomatica: p.fonteAutomatica ?? null,
+          multipla: !!p.multipla,
+          grupoPaiId,
+          quantidadeOrigemCodigo: ehGrupo ? (p.quantidadeOrigemCodigo ?? null) : null,
+          minInstancias: ehGrupo ? (p.minInstancias ?? null) : null,
+          maxInstancias: ehGrupo ? (p.maxInstancias ?? null) : null,
+        },
+      });
+      codigoParaId.set(p.codigo, pergunta.id);
+      if (!grupoPaiId) tipoTopLevelPorCodigo.set(p.codigo, p.tipo);
+
+      if (p.opcoes?.length) {
+        await tx.opcaoPergunta.createMany({
+          data: p.opcoes.map((o, i) => ({
+            perguntaId: pergunta.id,
+            ordem: o.ordem ?? i,
+            valor: o.valor,
+            rotulo: o.rotulo,
+          })),
+        });
+      }
+
+      for (const regra of p.regras ?? []) {
+        regrasPendentes.push({ alvoCodigo: p.codigo, regra });
+      }
+
+      if (ehGrupo) {
+        if (p.quantidadeOrigemCodigo) {
+          quantidadesPendentes.push({ grupoCodigo: p.codigo, origemCodigo: p.quantidadeOrigemCodigo });
+        }
+        const subperguntas = p.perguntas ?? [];
+        for (let si = 0; si < subperguntas.length; si++) {
+          await criarPergunta(
+            subperguntas[si]!,
+            secaoId,
+            subperguntas[si]!.ordem ?? si,
+            pergunta.id,
+            `grupo "${p.codigo}"`,
+          );
+        }
+      }
+    };
 
     const paginas: PaginaFormulario[] =
       schema.paginas && schema.paginas.length > 0
@@ -313,47 +431,24 @@ export class FormulariosRepository {
 
         const perguntas: Pergunta[] = sec.perguntas ?? [];
         for (let pi = 0; pi < perguntas.length; pi++) {
-          const p = perguntas[pi]!;
-          if (!p.codigo) {
-            throw new BadRequestException(`Pergunta sem 'codigo' na seção "${sec.titulo}".`);
-          }
-          if (codigoParaId.has(p.codigo)) {
-            throw new BadRequestException(`Código de pergunta duplicado: "${p.codigo}".`);
-          }
-          const pergunta = await tx.pergunta.create({
-            data: {
-              secaoId: secao.id,
-              ordem: p.ordem ?? pi,
-              codigo: p.codigo,
-              rotulo: p.rotulo,
-              tipo: p.tipo,
-              obrigatorio: !!p.obrigatorio,
-              ajuda: p.ajuda ?? null,
-              min: p.validacoes?.min ?? null,
-              max: p.validacoes?.max ?? null,
-              padrao: p.validacoes?.padrao ?? null,
-              tamanhoMaximoMb: p.validacoes?.tamanhoMaximoMb ?? null,
-              tiposArquivo: p.validacoes?.tiposArquivo ?? [],
-              fonteAutomatica: p.fonteAutomatica ?? null,
-            },
-          });
-          codigoParaId.set(p.codigo, pergunta.id);
-
-          if (p.opcoes?.length) {
-            await tx.opcaoPergunta.createMany({
-              data: p.opcoes.map((o, i) => ({
-                perguntaId: pergunta.id,
-                ordem: o.ordem ?? i,
-                valor: o.valor,
-                rotulo: o.rotulo,
-              })),
-            });
-          }
-
-          for (const regra of p.regras ?? []) {
-            regrasPendentes.push({ alvoCodigo: p.codigo, regra });
-          }
+          await criarPergunta(
+            perguntas[pi]!,
+            secao.id,
+            perguntas[pi]!.ordem ?? pi,
+            null,
+            `seção "${sec.titulo}"`,
+          );
         }
+      }
+    }
+
+    // A quantidade controladora precisa existir e ser uma pergunta NUMERO
+    // top-level (subpergunta nao controla o proprio grupo).
+    for (const { grupoCodigo, origemCodigo } of quantidadesPendentes) {
+      if (tipoTopLevelPorCodigo.get(origemCodigo) !== 'NUMERO') {
+        throw new BadRequestException(
+          `Grupo "${grupoCodigo}": a quantidade deve vir de uma pergunta NUMERO fora de grupos (recebido: "${origemCodigo}").`,
+        );
       }
     }
 

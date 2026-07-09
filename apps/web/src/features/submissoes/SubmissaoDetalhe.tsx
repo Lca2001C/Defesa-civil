@@ -32,6 +32,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { formatarResposta, type Pergunta } from "@dcmg/contracts";
 import { uploadAnexo } from "../../lib/uploadAnexo";
 import { useAuth } from "../../lib/auth-context";
 import { ACCEPT_TIPOS } from "../../shared/constants";
@@ -147,12 +148,12 @@ export default function SubmissaoDetalhe() {
   }
   if (!data) return null;
 
-  const rotuloPorCodigo = new Map<string, string>();
+  const perguntaPorCodigo = new Map<string, Pergunta>();
   const secoesSchema = data.schema?.paginas?.length
     ? data.schema.paginas.flatMap((pg) => pg.secoes ?? [])
     : data.schema?.secoes ?? [];
   for (const s of secoesSchema) {
-    for (const p of s.perguntas) rotuloPorCodigo.set(p.codigo, p.rotulo);
+    for (const p of s.perguntas) perguntaPorCodigo.set(p.codigo, p);
   }
 
   const botoes = [
@@ -306,20 +307,30 @@ export default function SubmissaoDetalhe() {
               Respostas
             </Typography>
             <Divider sx={{ mb: 1.5 }} />
-            {Object.entries(data.dados).map(([k, v]) => (
-              <Box key={k} sx={{ display: "flex", gap: 1, mb: 0.5 }}>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ minWidth: { xs: 100, sm: 140 }, flexShrink: 0, wordBreak: "break-word" }}
-                >
-                  {rotuloPorCodigo.get(k) ?? k}
-                </Typography>
-                <Typography variant="body2" sx={{ minWidth: 0, wordBreak: "break-word" }}>
-                  {Array.isArray(v) ? v.join(", ") : String(v ?? "—")}
-                </Typography>
-              </Box>
-            ))}
+            {Object.entries(data.dados).map(([k, v]) => {
+              const pergunta = perguntaPorCodigo.get(k);
+              // Chaves sem pergunta no schema (ex.: campos AUTOMATICO resolvidos
+              // ou respostas órfãs) são ignoradas. A formatação isomórfica trata
+              // GRUPO (lista de registros), MUNICIPIO ({nome}) e múltipla escolha.
+              if (!pergunta) return null;
+              return (
+                <Box key={k} sx={{ display: "flex", gap: 1, mb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ minWidth: { xs: 100, sm: 140 }, flexShrink: 0, wordBreak: "break-word" }}
+                  >
+                    {pergunta.rotulo}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{ minWidth: 0, wordBreak: "break-word", whiteSpace: "pre-wrap" }}
+                  >
+                    {formatarResposta(pergunta, v)}
+                  </Typography>
+                </Box>
+              );
+            })}
           </CardContent>
         </Card>
       </Box>

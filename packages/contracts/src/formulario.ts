@@ -30,6 +30,22 @@ export enum TipoPergunta {
   UPLOAD = 'UPLOAD',
   URL = 'URL',
   AUTOMATICO = 'AUTOMATICO',
+  /** Ano com exatamente 4 digitos (ex.: 2026). Valor: string "AAAA". */
+  ANO = 'ANO',
+  /** Competencia mensal no formato MM/AAAA. Valor: string "MM/AAAA". */
+  MES_ANO = 'MES_ANO',
+  /**
+   * Municipio da base oficial (IBGE), com autocomplete no preenchimento.
+   * Valor: { id: number, nome: string } — o id e validado no servidor.
+   */
+  MUNICIPIO = 'MUNICIPIO',
+  /**
+   * Grupo repetivel de subperguntas (ex.: cadastro individual de cursos ou
+   * do efetivo). O numero de instancias e controlado por outra pergunta
+   * NUMERO (`quantidadeOrigemCodigo`) ou por `minInstancias`/`maxInstancias`.
+   * Valor: array de objetos { [codigoSubpergunta]: valor }.
+   */
+  GRUPO = 'GRUPO',
 }
 
 /**
@@ -126,6 +142,22 @@ export interface Pergunta {
   regras?: RegraCondicional[];
   /** Fonte de preenchimento, para tipo AUTOMATICO. */
   fonteAutomatica?: FonteAutomatica;
+  /**
+   * LISTA_SUSPENSA com selecao multipla (valor: string[] como o CHECKBOX).
+   * Indicada para listas longas (ex.: COBRADE) onde checkboxes nao escalam.
+   */
+  multipla?: boolean;
+  /** Subperguntas (apenas tipo GRUPO). Nao podem ser GRUPO/UPLOAD/AUTOMATICO. */
+  perguntas?: Pergunta[];
+  /**
+   * Codigo de uma pergunta NUMERO (fora de grupos) que determina o numero
+   * exato de instancias do grupo (ex.: "qtd_cursos" abre N blocos de curso).
+   */
+  quantidadeOrigemCodigo?: string;
+  /** Minimo de instancias do grupo quando nao ha quantidadeOrigemCodigo. */
+  minInstancias?: number;
+  /** Maximo de instancias do grupo quando nao ha quantidadeOrigemCodigo. */
+  maxInstancias?: number;
 }
 
 /**

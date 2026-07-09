@@ -16,5 +16,6 @@
     "composite": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules"]
+  // Specs ficam fora do build/dist (rodam via ts-jest, nao sao publicados).
+  "exclude": ["dist", "node_modules", "src/**/*.spec.ts"]
 }

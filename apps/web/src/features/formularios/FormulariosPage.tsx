@@ -21,12 +21,14 @@ import { useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import DescriptionIcon from "@mui/icons-material/Description";
 import DeleteIcon from "@mui/icons-material/Delete";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../lib/auth-context";
 import { NIVEL_MODULO_ADMIN, QUERY_KEYS } from "../../shared/constants";
 import { FormulariosService } from "./services/formularios.service";
+import { ImportarExcelDialog } from "./ImportarExcelDialog";
 import type { Formulario } from "./types";
 
 const COR_STATUS: Record<string, "default" | "warning" | "success" | "error"> = {
@@ -46,6 +48,7 @@ export default function FormulariosPage() {
   const podeGerenciar = (usuario?.perfilNivel ?? 0) >= NIVEL_MODULO_ADMIN;
   const [excluindo, setExcluindo] = useState<Formulario | null>(null);
   const [erroExclusao, setErroExclusao] = useState<string | null>(null);
+  const [importando, setImportando] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: [QUERY_KEYS.FORMULARIOS],
@@ -83,16 +86,28 @@ export default function FormulariosPage() {
           </Typography>
         </Box>
         {podeGerenciar && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => navigate("/formularios/novo")}
-            sx={{ width: { xs: "100%", sm: "auto" } }}
-          >
-            Novo formulário
-          </Button>
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, width: { xs: "100%", sm: "auto" } }}>
+            <Button
+              variant="outlined"
+              startIcon={<UploadFileIcon />}
+              onClick={() => setImportando(true)}
+              sx={{ flex: { xs: 1, sm: "0 0 auto" } }}
+            >
+              Importar Excel
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => navigate("/formularios/novo")}
+              sx={{ flex: { xs: 1, sm: "0 0 auto" } }}
+            >
+              Novo formulário
+            </Button>
+          </Box>
         )}
       </Box>
+
+      <ImportarExcelDialog aberto={importando} onFechar={() => setImportando(false)} />
 
       {isLoading && (
         <Box sx={{ display: "flex", justifyContent: "center", mt: 6 }}>

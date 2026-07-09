@@ -14,6 +14,7 @@
     "dev": "pnpm --filter @dcmg/contracts build && pnpm --parallel --filter @dcmg/api --filter @dcmg/web dev",
     "dev:api": "pnpm --filter @dcmg/api dev",
     "dev:web": "pnpm --filter @dcmg/web dev",
+    "dev:init": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-init.ps1",
     "prisma:generate": "pnpm --filter @dcmg/api prisma:generate",
     "prisma:migrate": "pnpm --filter @dcmg/api prisma:migrate"
   },

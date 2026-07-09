@@ -10,3 +10,5 @@ export * from './competencia';
 export * from './submissao';
 export * from './formulario';
 export * from './painel';
+export * from './validacao';
+export * from './formato';

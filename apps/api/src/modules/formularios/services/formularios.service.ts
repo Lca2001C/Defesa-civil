@@ -6,6 +6,7 @@
 import { CompetenciaStatus, FormularioStatus } from '@prisma/client';
 import type { SchemaFormulario } from '@dcmg/contracts';
 import { FormulariosRepository } from '../repositories/formularios.repository';
+import { FormularioImportService } from './formulario-import.service';
 import type { PaginacaoDto } from '../../../common/dto/paginacao.dto';
 import type { CriarFormularioDto } from '../dtos/criar-formulario.dto';
 import type { AtualizarFormularioDto } from '../dtos/atualizar-formulario.dto';
@@ -14,7 +15,10 @@ import type { PublicarVersaoDto } from '../dtos/publicar-versao.dto';
 
 @Injectable()
 export class FormulariosService {
-  constructor(private readonly repo: FormulariosRepository) {}
+  constructor(
+    private readonly repo: FormulariosRepository,
+    private readonly importService: FormularioImportService,
+  ) {}
 
   // ──────────────────────────── Formulários ─────────────────────────────────
 
@@ -170,6 +174,25 @@ export class FormulariosService {
 
   listarBlocos() {
     return this.repo.listarBlocos();
+  }
+
+  // ──────────────────────── Importação via Excel ─────────────────────────────
+
+  /** Gera a planilha-modelo (.xlsx) para download. */
+  gerarModeloImportacao(): Promise<Buffer> {
+    return this.importService.gerarModelo();
+  }
+
+  /**
+   * Cria um formulário (v1 rascunho) a partir de uma planilha Excel. O parser
+   * valida com erros por linha; o decomporSchema revalida a estrutura inteira.
+   */
+  async importarExcel(buffer: Buffer) {
+    const { nome, schema } = await this.importService.parsearSchema(buffer);
+    return this.repo.criarComSchema(
+      { nome, descricao: schema.descricao ?? null, categoria: 'Importado' },
+      schema,
+    );
   }
 
   // ─────────────────────── Compor schema (uso externo) ───────────────────────

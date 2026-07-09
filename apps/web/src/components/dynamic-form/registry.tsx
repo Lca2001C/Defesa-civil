@@ -11,6 +11,8 @@ import { CampoCheckbox } from "./fields/CampoCheckbox";
 import { CampoSimNao } from "./fields/CampoSimNao";
 import { CampoAutomatico } from "./fields/CampoAutomatico";
 import { CampoArquivo } from "./fields/CampoArquivo";
+import { CampoMunicipio } from "./fields/CampoMunicipio";
+import { CampoGrupo } from "./fields/CampoGrupo";
 
 /** Mapa de TipoPergunta → componente MUI. */
 export const REGISTRY: Record<TipoPergunta, ComponentType<FieldProps>> = {
@@ -22,6 +24,9 @@ export const REGISTRY: Record<TipoPergunta, ComponentType<FieldProps>> = {
   [TipoPergunta.CNPJ]: CampoTexto,
   [TipoPergunta.CEP]: CampoTexto,
   [TipoPergunta.URL]: CampoTexto,
+  // ANO e MES_ANO reusam o CampoTexto (mascara/placeholder por tipo).
+  [TipoPergunta.ANO]: CampoTexto,
+  [TipoPergunta.MES_ANO]: CampoTexto,
   [TipoPergunta.NUMERO]: CampoNumero,
   [TipoPergunta.MOEDA]: CampoNumero,
   [TipoPergunta.PORCENTAGEM]: CampoNumero,
@@ -32,4 +37,6 @@ export const REGISTRY: Record<TipoPergunta, ComponentType<FieldProps>> = {
   [TipoPergunta.SIM_NAO]: CampoSimNao,
   [TipoPergunta.UPLOAD]: CampoArquivo,
   [TipoPergunta.AUTOMATICO]: CampoAutomatico,
+  [TipoPergunta.MUNICIPIO]: CampoMunicipio,
+  [TipoPergunta.GRUPO]: CampoGrupo,
 };

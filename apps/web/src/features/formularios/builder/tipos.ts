@@ -13,7 +13,7 @@ export interface TipoInfo {
   grupo: "Texto" | "Número" | "Escolha" | "Especial";
 }
 
-/** Catálogo dos 18 tipos de pergunta, agrupados para a paleta. */
+/** Catálogo dos tipos de pergunta, agrupados para a paleta. */
 export const TIPOS: TipoInfo[] = [
   { tipo: TipoPergunta.TEXTO_CURTO, rotulo: "Texto curto", grupo: "Texto" },
   { tipo: TipoPergunta.TEXTO_LONGO, rotulo: "Texto longo", grupo: "Texto" },
@@ -27,12 +27,23 @@ export const TIPOS: TipoInfo[] = [
   { tipo: TipoPergunta.MOEDA, rotulo: "Moeda (R$)", grupo: "Número" },
   { tipo: TipoPergunta.PORCENTAGEM, rotulo: "Porcentagem", grupo: "Número" },
   { tipo: TipoPergunta.DATA, rotulo: "Data", grupo: "Número" },
+  { tipo: TipoPergunta.ANO, rotulo: "Ano (AAAA)", grupo: "Número" },
+  { tipo: TipoPergunta.MES_ANO, rotulo: "Mês/Ano (MM/AAAA)", grupo: "Número" },
   { tipo: TipoPergunta.SIM_NAO, rotulo: "Sim/Não", grupo: "Escolha" },
   { tipo: TipoPergunta.LISTA_SUSPENSA, rotulo: "Lista suspensa", grupo: "Escolha" },
   { tipo: TipoPergunta.RADIO, rotulo: "Escolha única", grupo: "Escolha" },
   { tipo: TipoPergunta.CHECKBOX, rotulo: "Múltipla escolha", grupo: "Escolha" },
+  { tipo: TipoPergunta.MUNICIPIO, rotulo: "Município (IBGE)", grupo: "Especial" },
+  { tipo: TipoPergunta.GRUPO, rotulo: "Grupo repetível", grupo: "Especial" },
   { tipo: TipoPergunta.UPLOAD, rotulo: "Upload de arquivo", grupo: "Especial" },
   { tipo: TipoPergunta.AUTOMATICO, rotulo: "Automático", grupo: "Especial" },
+];
+
+/** Tipos que NÃO podem ser subperguntas de um GRUPO (limitação da v1). */
+export const TIPOS_PROIBIDOS_EM_GRUPO = [
+  TipoPergunta.GRUPO,
+  TipoPergunta.UPLOAD,
+  TipoPergunta.AUTOMATICO,
 ];
 
 export const ROTULO_TIPO: Record<TipoPergunta, string> = Object.fromEntries(
@@ -77,6 +88,30 @@ export function criarPergunta(tipo: TipoPergunta): Pergunta {
   }
   if (tipo === TipoPergunta.AUTOMATICO) {
     base.fonteAutomatica = FonteAutomatica.CODIGO_IBGE;
+  }
+  if (tipo === TipoPergunta.GRUPO) {
+    // Grupo começa com uma subpergunta de texto e repetição manual (1+).
+    base.minInstancias = 1;
+    base.perguntas = [
+      { codigo: uid("sub"), rotulo: "Nova subpergunta", tipo: TipoPergunta.TEXTO_CURTO, obrigatorio: false },
+    ];
+  }
+  return base;
+}
+
+/** Cria uma subpergunta em branco (usada dentro do editor de GRUPO). */
+export function criarSubpergunta(tipo: TipoPergunta = TipoPergunta.TEXTO_CURTO): Pergunta {
+  const base: Pergunta = {
+    codigo: uid("sub"),
+    rotulo: "Nova subpergunta",
+    tipo,
+    obrigatorio: false,
+  };
+  if (TIPOS_COM_OPCOES.includes(tipo)) {
+    base.opcoes = [
+      { valor: "opcao_1", rotulo: "Opção 1" },
+      { valor: "opcao_2", rotulo: "Opção 2" },
+    ];
   }
   return base;
 }

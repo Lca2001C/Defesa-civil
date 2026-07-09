@@ -63,6 +63,7 @@ enum SubmissaoStatus {
 }
 
 /// Tipos de pergunta suportados pelo construtor visual de formularios.
+/// Espelha o enum TipoPergunta de @dcmg/contracts — mantenha os dois em sincronia.
 enum TipoPergunta {
   TEXTO_CURTO
   TEXTO_LONGO
@@ -82,6 +83,10 @@ enum TipoPergunta {
   UPLOAD
   URL
   AUTOMATICO
+  ANO
+  MES_ANO
+  MUNICIPIO
+  GRUPO
 }
 
 /// Fonte de preenchimento de uma pergunta AUTOMATICO (resolvida no servidor).
@@ -370,14 +375,28 @@ model Pergunta {
   tiposArquivo    String[]         @map("tipos_arquivo")
   // Para tipo AUTOMATICO
   fonteAutomatica FonteAutomatica? @map("fonte_automatica")
+  // LISTA_SUSPENSA com selecao multipla (valor: array, como o CHECKBOX)
+  multipla        Boolean          @default(false)
+  // Para tipo GRUPO (bloco repetivel): subperguntas via auto-relacao.
+  // `grupoPaiId` preenchido = esta pergunta e SUBPERGUNTA do grupo indicado
+  // (e nao aparece diretamente na secao). A resposta do grupo e um JSON
+  // array de objetos { [codigoSubpergunta]: valor } na pergunta-grupo.
+  grupoPaiId             String? @map("grupo_pai_id")
+  // Codigo da pergunta NUMERO que controla o numero exato de instancias.
+  quantidadeOrigemCodigo String? @map("quantidade_origem_codigo")
+  minInstancias          Int?    @map("min_instancias")
+  maxInstancias          Int?    @map("max_instancias")
 
   secao            Secao              @relation(fields: [secaoId], references: [id], onDelete: Cascade)
+  grupoPai         Pergunta?          @relation("SubperguntasGrupo", fields: [grupoPaiId], references: [id], onDelete: Cascade)
+  subperguntas     Pergunta[]         @relation("SubperguntasGrupo")
   opcoes           OpcaoPergunta[]
   regrasComoAlvo   RegraCondicional[] @relation("RegraAlvo")
   regrasComoOrigem RegraCondicional[] @relation("RegraOrigem")
   respostas        Resposta[]
 
   @@index([secaoId])
+  @@index([grupoPaiId])
   @@map("perguntas")
 }
 

@@ -11,6 +11,7 @@ import {
   Submissao,
   SubmissaoStatus,
 } from '@prisma/client';
+import { TipoPergunta, todasPerguntas, validarRespostas } from '@dcmg/contracts';
 import { ConfigService } from '@nestjs/config';
 import { FormulariosService } from '../../formularios/services/formularios.service';
 import { StorageService } from '../../../infra/storage/storage.service';
@@ -78,6 +79,11 @@ export class SubmissoesService {
       : `RASCUNHO-${usuario.sub.slice(0, 8)}-${Date.now()}`;
 
     const dados = await this.mesclarAutomaticos(dto, autor.nome, competencia.nome, protocolo, enviar);
+    // Envio imediato = versao final: valida as respostas contra o schema no
+    // SERVIDOR (rascunhos podem ficar incompletos, entao nao validam aqui).
+    if (enviar) {
+      await this.validarRespostasContraSchema(dto.formularioVersaoId, dados);
+    }
     const status = this.statusInicial(enviar, dto.dados);
 
     const submissao = await this.repo.criarComRespostas(
@@ -246,6 +252,14 @@ export class SubmissoesService {
     // Recalcula AUTOMATICO agora que protocolo/competência são conhecidos.
     const ctx = await this.repo.contextoAutomatico(sub.id);
     const automaticos = await this.resolverAutomaticos(sub.formularioVersaoId, { ...ctx, protocolo });
+
+    // Barreira de seguranca: valida o conjunto FINAL de respostas (persistidas
+    // + automaticos) contra o schema — o backend nao confia no cliente.
+    const respostasAtuais = await this.repo.lerRespostas(sub.id);
+    await this.validarRespostasContraSchema(sub.formularioVersaoId, {
+      ...respostasAtuais,
+      ...automaticos,
+    });
 
     const atualizado = await this.repo.enviarComHistorico(
       id,
@@ -567,6 +581,39 @@ export class SubmissoesService {
     if (!sub) throw new NotFoundException('Submissão não encontrada.');
     await this.verificarEscopo(sub, usuario);
     return sub;
+  }
+
+  /**
+   * Valida as respostas contra o schema da versão (obrigatoriedade respeitando
+   * visibilidade condicional, tipos, opções, grupos repetíveis). A lógica é a
+   * MESMA do cliente (@dcmg/contracts.validarRespostas) — aqui ela é a barreira
+   * de segurança. Único passo não-isomórfico: conferir se os ids de perguntas
+   * MUNICIPIO existem na base oficial.
+   */
+  private async validarRespostasContraSchema(
+    versaoId: string,
+    dados: Record<string, unknown>,
+  ): Promise<void> {
+    const schema = await this.formularios.comporSchema(versaoId);
+    const erros = validarRespostas(schema, dados);
+
+    // Perguntas MUNICIPIO: o shape { id, nome } já foi validado; confere o id.
+    for (const campo of todasPerguntas(schema)) {
+      if (campo.tipo !== TipoPergunta.MUNICIPIO) continue;
+      const valor = dados[campo.codigo] as { id?: number } | undefined;
+      if (!valor || typeof valor !== 'object' || !valor.id) continue;
+      const nome = await this.repo.buscarMunicipioNome(Number(valor.id));
+      if (!nome) {
+        erros.push({ codigo: campo.codigo, mensagem: 'Município não encontrado na base oficial.' });
+      }
+    }
+
+    if (erros.length > 0) {
+      throw new BadRequestException({
+        message: 'Respostas inválidas — corrija os campos apontados antes de enviar.',
+        erros,
+      });
+    }
   }
 
   /** Calcula os valores das perguntas AUTOMATICO da versão. */

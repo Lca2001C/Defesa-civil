@@ -67,6 +67,19 @@ const temaBase = createTheme({
         },
       },
     },
+    // Textos de ajuda/descricao dos formularios dinamicos podem ser longos
+    // (ex.: consequencias por tipo de evento): exibir integralmente, com
+    // quebra de linha, em vez de cortar visualmente.
+    MuiFormHelperText: {
+      styleOverrides: {
+        root: { whiteSpace: "pre-wrap" },
+      },
+    },
+    MuiFormControlLabel: {
+      styleOverrides: {
+        label: { whiteSpace: "normal", wordBreak: "break-word" },
+      },
+    },
   },
 });
 
