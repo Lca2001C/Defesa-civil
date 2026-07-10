@@ -18,6 +18,8 @@ export default tseslint.config(
       'packages/contracts/src/*.js',
       'apps/api/prisma/**',
       'apps/web/public/**',
+      // Scripts utilitarios Node (CommonJS) fora do pipeline da app.
+      'apps/api/scripts/**',
     ],
   },
 
