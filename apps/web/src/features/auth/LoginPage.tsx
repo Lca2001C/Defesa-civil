@@ -363,6 +363,15 @@ export default function LoginPage() {
       <Card sx={{ width: "100%", maxWidth: 460 }}>
         <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Box sx={{ display: "flex", alignItems: "center", mb: 3, gap: 1.5 }}>
+            <Box
+              component="img"
+              src="/logo.svg"
+              alt="Defesa Civil MG"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+              sx={{ width: 48, height: 48, flexShrink: 0, objectFit: "contain" }}
+            />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
                 Defesa Civil MG
