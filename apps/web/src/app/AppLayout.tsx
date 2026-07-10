@@ -34,7 +34,6 @@ import { useState, type ReactNode } from "react";
 import { cores } from "../theme/tokens";
 import { useAuth } from "../lib/auth-context";
 import { NIVEL_MODULO_ADMIN } from "../shared/constants";
-import { BrandLogo } from "../shared/BrandLogo";
 
 const LARGURA_SIDEBAR = 248;
 
@@ -78,9 +77,7 @@ export default function AppLayout() {
   const conteudoDrawer = (
     <>
       <Toolbar />
-      {/* logo + nome na sidebar */}
       <Box sx={{ px: 2, py: 1.5, display: "flex", alignItems: "center", gap: 1 }}>
-        <BrandLogo size={28} alt="Defesa Civil MG" />
         <Typography variant="caption" sx={{ color: cores.textoSecundario, lineHeight: 1.2 }}>
           Plataforma<br />
           <strong style={{ color: cores.textoPrimario }}>Defesa Civil MG</strong>
@@ -134,7 +131,6 @@ export default function AppLayout() {
             >
               <MenuIcon />
             </IconButton>
-            <BrandLogo size={34} />
             <Typography variant="h6" noWrap sx={{ fontWeight: 700, minWidth: 0 }}>
               Defesa Civil MG
             </Typography>

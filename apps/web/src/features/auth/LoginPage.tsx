@@ -32,7 +32,6 @@ import { ApiError } from "../../lib/api";
 import { cores } from "../../theme/tokens";
 import { AuthService } from "./services/auth.service";
 import type { TermoLgpd, RegistrarPayload } from "./types";
-import { BrandLogo } from "../../shared/BrandLogo";
 
 // ── Aba Entrar ────────────────────────────────────────────────────────────────
 
@@ -364,7 +363,6 @@ export default function LoginPage() {
       <Card sx={{ width: "100%", maxWidth: 460 }}>
         <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Box sx={{ display: "flex", alignItems: "center", mb: 3, gap: 1.5 }}>
-            <BrandLogo size={44} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
                 Defesa Civil MG
