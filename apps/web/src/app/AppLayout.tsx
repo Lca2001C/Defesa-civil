@@ -30,7 +30,7 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { NavLink, Outlet } from "react-router-dom";
-import { useState, type ReactNode, type SyntheticEvent } from "react";
+import { useState, type ReactNode } from "react";
 import { cores } from "../theme/tokens";
 import { useAuth } from "../lib/auth-context";
 import { NIVEL_MODULO_ADMIN } from "../shared/constants";
@@ -63,11 +63,6 @@ const SELECTED_SX = {
   "&:hover": { backgroundColor: "rgba(249, 115, 22, 0.24)" },
 };
 
-/** Esconde a <img> se o arquivo falhar (evita o ícone de imagem quebrada). */
-function esconderSeQuebrar(e: SyntheticEvent<HTMLImageElement>) {
-  e.currentTarget.style.display = "none";
-}
-
 export default function AppLayout() {
   const { usuario, fazerLogout } = useAuth();
   const [mobileAberto, setMobileAberto] = useState(false);
@@ -83,13 +78,6 @@ export default function AppLayout() {
     <>
       <Toolbar />
       <Box sx={{ px: 2, py: 1.5, display: "flex", alignItems: "center", gap: 1 }}>
-        <Box
-          component="img"
-          src="/logo.svg"
-          alt="Defesa Civil MG"
-          onError={esconderSeQuebrar}
-          sx={{ width: 32, height: 32, flexShrink: 0, objectFit: "contain" }}
-        />
         <Typography variant="caption" sx={{ color: cores.textoSecundario, lineHeight: 1.2 }}>
           Plataforma<br />
           <strong style={{ color: cores.textoPrimario }}>Defesa Civil MG</strong>
@@ -143,13 +131,6 @@ export default function AppLayout() {
             >
               <MenuIcon />
             </IconButton>
-            <Box
-              component="img"
-              src="/logo.svg"
-              alt=""
-              onError={esconderSeQuebrar}
-              sx={{ width: 34, height: 34, flexShrink: 0, objectFit: "contain" }}
-            />
             <Typography variant="h6" noWrap sx={{ fontWeight: 700, minWidth: 0 }}>
               Defesa Civil MG
             </Typography>
