@@ -87,6 +87,8 @@ enum TipoPergunta {
   MES_ANO
   MUNICIPIO
   GRUPO
+  HORA
+  INFORMATIVO
 }
 
 /// Fonte de preenchimento de uma pergunta AUTOMATICO (resolvida no servidor).
@@ -386,6 +388,8 @@ model Pergunta {
   quantidadeOrigemCodigo String? @map("quantidade_origem_codigo")
   minInstancias          Int?    @map("min_instancias")
   maxInstancias          Int?    @map("max_instancias")
+  // Aparencia do componente INFORMATIVO (titulo/descricao/alerta).
+  variante               String?
 
   secao            Secao              @relation(fields: [secaoId], references: [id], onDelete: Cascade)
   grupoPai         Pergunta?          @relation("SubperguntasGrupo", fields: [grupoPaiId], references: [id], onDelete: Cascade)

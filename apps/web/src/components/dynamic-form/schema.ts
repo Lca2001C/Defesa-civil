@@ -73,6 +73,8 @@ export function gerarSchemaZod(schema: SchemaFormulario) {
 export function construirDefaultValues(schema: SchemaFormulario): Record<string, unknown> {
   const valores: Record<string, unknown> = {};
   for (const campo of todasPerguntas(schema)) {
+    // INFORMATIVO não é campo de resposta — não registra valor.
+    if (campo.tipo === TipoPergunta.INFORMATIVO) continue;
     valores[campo.codigo] = valorInicial(campo);
   }
   return valores;

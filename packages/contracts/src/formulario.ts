@@ -46,6 +46,21 @@ export enum TipoPergunta {
    * Valor: array de objetos { [codigoSubpergunta]: valor }.
    */
   GRUPO = 'GRUPO',
+  /** Hora no formato HH:MM (24h). Valor: string "HH:MM". */
+  HORA = 'HORA',
+  /**
+   * Componente informativo (NAO e um campo de resposta): titulo, descricao ou
+   * alerta usado para orientar o preenchimento. Nao aparece nas respostas nem
+   * na validacao. A aparencia e definida por `Pergunta.variante`.
+   */
+  INFORMATIVO = 'INFORMATIVO',
+}
+
+/** Aparencia de uma pergunta INFORMATIVO. */
+export enum VarianteInformativo {
+  TITULO = 'titulo',
+  DESCRICAO = 'descricao',
+  ALERTA = 'alerta',
 }
 
 /**
@@ -158,6 +173,8 @@ export interface Pergunta {
   minInstancias?: number;
   /** Maximo de instancias do grupo quando nao ha quantidadeOrigemCodigo. */
   maxInstancias?: number;
+  /** Aparencia do componente INFORMATIVO (titulo/descricao/alerta). */
+  variante?: VarianteInformativo;
 }
 
 /**

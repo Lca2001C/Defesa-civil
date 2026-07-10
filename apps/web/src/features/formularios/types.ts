@@ -29,6 +29,22 @@ export interface CriacaoResp {
   versaoInicialId: string;
 }
 
+/** Contagens do preview de importação. */
+export interface ResumoImportacao {
+  secoes: number;
+  perguntas: number;
+  listas: number;
+  regras: number;
+}
+
+/** Resposta do preview de importação via Excel. */
+export interface ResultadoImportacao {
+  nome: string;
+  schema: SchemaFormulario;
+  resumo: ResumoImportacao;
+  erros: string[];
+}
+
 export interface VersaoResumo {
   id: string;
   versao: number;

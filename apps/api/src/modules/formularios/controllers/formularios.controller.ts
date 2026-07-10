@@ -10,6 +10,7 @@
   Post,
   Put,
   Query,
+  Req,
   Res,
   UploadedFile,
   UseInterceptors,
@@ -17,11 +18,14 @@
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import type { Response, Express } from 'express';
+import type { Request, Response, Express } from 'express';
 import { FormularioStatus } from '@prisma/client';
 import { BadRequestException } from '@nestjs/common';
 import { Permissao } from '../../../common/decorators/permissao.decorator';
 import { NivelMinimo } from '../../../common/decorators/nivel-minimo.decorator';
+import { UsuarioAtual } from '../../../common/decorators/usuario-atual.decorator';
+import { extrairIp } from '../../../shared/utils/format.util';
+import type { JwtPayload } from '../../../common/types/jwt-payload';
 import { PERMISSION_LEVEL } from '../../../shared/constants';
 import { PaginacaoDto } from '../../../common/dto/paginacao.dto';
 import { AtualizarFormularioDto } from '../dtos/atualizar-formulario.dto';
@@ -97,23 +101,49 @@ export class FormulariosController {
     res.end(buffer);
   }
 
+  /** Valida a extensão .xlsx e devolve o arquivo (erros amigáveis). */
+  private exigirXlsx(arquivo: Express.Multer.File): Express.Multer.File {
+    if (!arquivo) throw new BadRequestException('Envie a planilha no campo "arquivo".');
+    if (!/\.xlsx$/i.test(arquivo.originalname)) {
+      throw new BadRequestException(
+        'O arquivo deve ser .xlsx. Se o seu é .xls (Excel antigo), abra no Excel e use "Salvar como" .xlsx.',
+      );
+    }
+    return arquivo;
+  }
+
+  @Post('importar-excel/preview')
+  @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
+  @Permissao('formularios.criar')
+  @UseInterceptors(
+    FileInterceptor('arquivo', { storage: memoryStorage(), limits: { fileSize: MAX_XLSX_BYTES } }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Prévia da importação (não persiste): resumo + erros amigáveis.' })
+  previaImportacao(@UploadedFile() arquivo: Express.Multer.File) {
+    return this.service.previaImportacao(this.exigirXlsx(arquivo).buffer);
+  }
+
   @Post('importar-excel')
   @NivelMinimo(PERMISSION_LEVEL.GESTOR_ESTADUAL)
   @Permissao('formularios.criar')
   @UseInterceptors(
-    FileInterceptor('arquivo', {
-      storage: memoryStorage(),
-      limits: { fileSize: MAX_XLSX_BYTES },
-    }),
+    FileInterceptor('arquivo', { storage: memoryStorage(), limits: { fileSize: MAX_XLSX_BYTES } }),
   )
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Cria um formulário (rascunho) a partir de uma planilha Excel.' })
-  importarExcel(@UploadedFile() arquivo: Express.Multer.File) {
-    if (!arquivo) throw new BadRequestException('Envie a planilha (.xlsx) no campo "arquivo".');
-    if (!/\.xlsx$/i.test(arquivo.originalname)) {
-      throw new BadRequestException('O arquivo deve ser .xlsx (planilha-modelo do sistema).');
-    }
-    return this.service.importarExcel(arquivo.buffer);
+  @ApiOperation({ summary: 'Cria um formulário NATIVO (rascunho) a partir de uma planilha Excel.' })
+  importarExcel(
+    @UploadedFile() arquivo: Express.Multer.File,
+    @UsuarioAtual() usuario: JwtPayload,
+    @Req() req: Request,
+  ) {
+    const file = this.exigirXlsx(arquivo);
+    return this.service.importarExcel(file.buffer, {
+      atorId: usuario.sub,
+      ip: extrairIp(req),
+      userAgent: req.headers['user-agent'],
+      nomeArquivo: file.originalname,
+    });
   }
 
   @Get(':id')

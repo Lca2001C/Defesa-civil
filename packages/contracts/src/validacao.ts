@@ -102,6 +102,9 @@ const ANO_MAX = 2100;
 /** MES_ANO: MM/AAAA com mes 01-12. */
 const REGEX_MES_ANO = /^(0[1-9]|1[0-2])\/\d{4}$/;
 
+/** HORA: HH:MM em 24h (00:00-23:59). */
+const REGEX_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 function vazio(v: unknown): boolean {
   if (v === undefined || v === null) return true;
   if (typeof v === 'string') return v.trim() === '';
@@ -180,6 +183,9 @@ function validarValor(campo: Pergunta, valor: unknown): string | null {
     case TipoPergunta.MES_ANO:
       return REGEX_MES_ANO.test(String(valor)) ? null : msg('Use o formato MM/AAAA.');
 
+    case TipoPergunta.HORA:
+      return REGEX_HORA.test(String(valor)) ? null : msg('Use o formato HH:MM.');
+
     case TipoPergunta.DATA:
       // Aceita ISO (AAAA-MM-DD), formato nativo do input date.
       return /^\d{4}-\d{2}-\d{2}$/.test(String(valor)) ? null : msg('Data invalida.');
@@ -215,9 +221,10 @@ function validarValor(campo: Pergunta, valor: unknown): string | null {
     }
 
     // UPLOAD e validado no fluxo proprio de anexos; AUTOMATICO e resolvido
-    // no servidor; GRUPO e tratado em validarGrupo.
+    // no servidor; GRUPO e tratado em validarGrupo; INFORMATIVO nao e campo.
     case TipoPergunta.UPLOAD:
     case TipoPergunta.AUTOMATICO:
+    case TipoPergunta.INFORMATIVO:
     case TipoPergunta.GRUPO:
       return null;
 
@@ -303,7 +310,14 @@ export function validarRespostas(schema: SchemaFormulario, dados: Respostas): Er
   const erros: ErroValidacao[] = [];
 
   for (const campo of todasPerguntas(schema)) {
-    if (campo.tipo === TipoPergunta.AUTOMATICO || campo.tipo === TipoPergunta.UPLOAD) continue;
+    // AUTOMATICO/UPLOAD tem fluxo proprio; INFORMATIVO nao e campo de resposta.
+    if (
+      campo.tipo === TipoPergunta.AUTOMATICO ||
+      campo.tipo === TipoPergunta.UPLOAD ||
+      campo.tipo === TipoPergunta.INFORMATIVO
+    ) {
+      continue;
+    }
     if (!campoVisivel(campo, dados)) continue;
 
     const valor = dados[campo.codigo];

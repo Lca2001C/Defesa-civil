@@ -256,6 +256,7 @@ export class FormulariosRepository {
       quantidadeOrigemCodigo: p.quantidadeOrigemCodigo ?? undefined,
       minInstancias: p.minInstancias ?? undefined,
       maxInstancias: p.maxInstancias ?? undefined,
+      variante: (p.variante ?? undefined) as Pergunta['variante'],
       validacoes: {
         min: p.min ?? undefined,
         max: p.max ?? undefined,
@@ -364,6 +365,7 @@ export class FormulariosRepository {
           quantidadeOrigemCodigo: ehGrupo ? (p.quantidadeOrigemCodigo ?? null) : null,
           minInstancias: ehGrupo ? (p.minInstancias ?? null) : null,
           maxInstancias: ehGrupo ? (p.maxInstancias ?? null) : null,
+          variante: p.variante ?? null,
         },
       });
       codigoParaId.set(p.codigo, pergunta.id);

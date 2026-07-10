@@ -9,6 +9,7 @@ import type {
   VersaoData,
   CriarFormularioInput,
   VersaoPublicada,
+  ResultadoImportacao,
 } from "../types";
 
 /** Camada de serviço de API da feature de formulários (CRUD + versões + templates). */
@@ -35,7 +36,14 @@ export const FormulariosService = {
       { method: "GET" },
     ),
 
-  /** Importa um formulário a partir de uma planilha (.xlsx). */
+  /** Prévia da importação (não persiste): resumo + erros amigáveis. */
+  previaImportacao: (arquivo: File) => {
+    const form = new FormData();
+    form.append("arquivo", arquivo);
+    return api.post<ResultadoImportacao>("/formularios/importar-excel/preview", form);
+  },
+
+  /** Importa um formulário NATIVO a partir de uma planilha (.xlsx). */
   importarExcel: (arquivo: File) => {
     const form = new FormData();
     form.append("arquivo", arquivo);

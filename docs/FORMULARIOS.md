@@ -21,6 +21,7 @@ gravadas como uma linha por pergunta (`Resposta.valor`, JSON).
 | `ANO` | Ano com 4 dígitos (1900–2100) | string "AAAA" |
 | `MES_ANO` | Competência mensal | string "MM/AAAA" |
 | `DATA` | Data completa | string ISO "AAAA-MM-DD" |
+| `HORA` | Hora (24h) | string "HH:MM" |
 | `EMAIL` / `URL` / `CPF` / `CNPJ` / `CEP` / `TELEFONE` | Texto com máscara/validação | string |
 | `SIM_NAO` | Booleano | boolean |
 | `LISTA_SUSPENSA` | Seleção única — ou **múltipla** (flag `multipla`) | string ou string[] |
@@ -30,6 +31,7 @@ gravadas como uma linha por pergunta (`Resposta.valor`, JSON).
 | `UPLOAD` | Anexo (inclui KML/KMZ/GeoJSON/SHP em ZIP) | id do arquivo |
 | `AUTOMATICO` | Preenchido pelo servidor (IBGE, município, competência…) | conforme a fonte |
 | `GRUPO` | Bloco repetível de subperguntas | array de objetos |
+| `INFORMATIVO` | Componente visual (título/descrição/alerta) — **não** é resposta | — |
 
 ## Lógica condicional
 
@@ -74,34 +76,51 @@ A lógica de validação é **isomórfica** (`packages/contracts/src/validacao.t
 obrigatoriedade de campos visíveis, tipos, opções válidas e grupos. Um envio com
 respostas inválidas retorna `400` com a lista de erros por campo/registro.
 
-## Importação via Excel
+## Importação via Excel (formato Defesa Civil MG)
 
 Na tela **Formulários** (perfil Gestor Estadual ou Super Admin), use
-**Importar Excel**:
+**Importar Excel**. A planilha é apenas o **molde**: a importação cria um
+formulário **nativo** (rascunho) no banco; nada da planilha permanece depois, e
+tudo fica editável no construtor visual.
 
-1. **Baixar planilha-modelo** — gera um `.xlsx` com as abas `Instrucoes`
-   (nome do formulário na célula **B1** + legenda) e `Perguntas`, com exemplos.
-2. Preencher a aba `Perguntas` — **uma linha por pergunta**. Colunas:
+Fluxo: **selecionar `.xlsx` → prévia (seções/perguntas/listas/regras + erros) →
+Criar formulário → abre no construtor**. (Apenas `.xlsx`; para `.xls` antigo,
+abra no Excel e "Salvar como" `.xlsx`.)
 
-   | Coluna | Descrição |
-   |---|---|
-   | `Pagina` / `Secao` | Agrupam as perguntas (repita o mesmo texto para juntar) |
-   | `Codigo` | Identificador único (chave da resposta) |
-   | `Pergunta` | Rótulo exibido |
-   | `Tipo` | Um dos tipos acima (ex.: `TEXTO_CURTO`, `GRUPO`, `MUNICIPIO`) |
-   | `Obrigatoria` | `S` / `N` |
-   | `Ajuda` | Texto de apoio (opcional) |
-   | `Opcoes` | Rótulos separados por `;` (tipos de escolha) |
-   | `PermiteOutro` | `S` gera a opção "Outro(s)" + campo de especificação obrigatório |
-   | `Multipla` | `S` no `LISTA_SUSPENSA` = seleção múltipla |
-   | `CondicionalDe` + `CondicionalValor` | Mostra a pergunta só quando a origem == valor |
-   | `Grupo` | Código de uma pergunta `GRUPO` — a linha vira subpergunta dele |
-   | `QuantidadeDe` | No `GRUPO`: código da pergunta `NUMERO` que controla o nº de registros |
-   | `Min` / `Max` | Texto/número: limites; no `GRUPO` sem `QuantidadeDe`: mín./máx. de registros |
+### Estrutura da planilha
+- **Cada aba (worksheet) vira uma SEÇÃO**, na ordem em que aparecem. Um número
+  no início do nome (ex.: `1- Identificação`) é removido do título.
+- Abas reservadas (não viram seção): **`Listas_Suspensas`** e **`Instrucoes`**
+  (opcional; nome do formulário na célula **B1**).
+- Em cada aba, deve haver as colunas **`Pergunta`** e **`Tipo`** (a coluna
+  `Resposta`, se existir, é **ignorada** — é só exemplo).
 
-3. **Importar** — a API valida com **erros por linha** (tipo inválido, código
-   duplicado, referência quebrada) e cria um formulário **RASCUNHO**, que abre no
-   builder para revisão. Publique numa competência **ABERTA** para disponibilizar.
+### Mapeamento da coluna "Tipo"
+`Texto`→texto curto · `Texto longo`→parágrafo · `Número` · `Data` · `Hora` ·
+`Ano` · `Mês/Ano` · `E-mail`/`Telefone`/`CPF`/`CNPJ`/`CEP`/`URL` ·
+`Sim / Não`→escolha Sim/Não · `Sim / Não / N.A.`→3 opções ·
+`Lista suspensa`→select (opções da aba `Listas_Suspensas`) ·
+`Município`→lista de municípios de MG · `Automático`→campo do sistema
+(IBGE/município/usuário/data, inferido pelo rótulo) ·
+`Título`/`Instrução`/`Alerta` (ou célula vazia)→componente **informativo**.
+
+### Recursos automáticos
+- **`Listas_Suspensas`**: cada **coluna** é uma lista — a 1ª linha é o nome da
+  lista, as células abaixo são as opções. A pergunta é casada com a lista de
+  **mesmo nome** (ex.: pergunta "Cargo/Função" ↔ coluna "Cargo/Função").
+- **Perguntas-filhas**: rótulo começando com **`↳`** vira condicional da
+  pergunta anterior (aparece quando esta = "Sim"). Ajustável no construtor.
+- **Checklists**: rótulos começando com **`☐`** viram um **grupo repetível** de
+  itens (Item + Possui? + Quantidade + Observação); os nomes detectados ficam na
+  ajuda do grupo.
+- **Efetivo**: uma aba com "Efetivo" no nome vira **um grupo repetível** (um
+  registro por servidor), com as perguntas da aba como subcampos.
+- **Município**: gera um campo de seleção de **todos os municípios de MG** (base
+  oficial), com busca.
+
+A prévia mostra as contagens e **erros amigáveis** (tipo não reconhecido, lista
+suspensa sem correspondência, aba sem cabeçalho) antes de confirmar. A criação é
+registrada no **log de auditoria** (usuário, arquivo, contagens, tempo).
 
 ## Aplicar ajustes num formulário já em produção
 

@@ -27,6 +27,7 @@ export const TIPOS: TipoInfo[] = [
   { tipo: TipoPergunta.MOEDA, rotulo: "Moeda (R$)", grupo: "Número" },
   { tipo: TipoPergunta.PORCENTAGEM, rotulo: "Porcentagem", grupo: "Número" },
   { tipo: TipoPergunta.DATA, rotulo: "Data", grupo: "Número" },
+  { tipo: TipoPergunta.HORA, rotulo: "Hora (HH:MM)", grupo: "Número" },
   { tipo: TipoPergunta.ANO, rotulo: "Ano (AAAA)", grupo: "Número" },
   { tipo: TipoPergunta.MES_ANO, rotulo: "Mês/Ano (MM/AAAA)", grupo: "Número" },
   { tipo: TipoPergunta.SIM_NAO, rotulo: "Sim/Não", grupo: "Escolha" },
@@ -35,6 +36,7 @@ export const TIPOS: TipoInfo[] = [
   { tipo: TipoPergunta.CHECKBOX, rotulo: "Múltipla escolha", grupo: "Escolha" },
   { tipo: TipoPergunta.MUNICIPIO, rotulo: "Município (IBGE)", grupo: "Especial" },
   { tipo: TipoPergunta.GRUPO, rotulo: "Grupo repetível", grupo: "Especial" },
+  { tipo: TipoPergunta.INFORMATIVO, rotulo: "Texto informativo", grupo: "Especial" },
   { tipo: TipoPergunta.UPLOAD, rotulo: "Upload de arquivo", grupo: "Especial" },
   { tipo: TipoPergunta.AUTOMATICO, rotulo: "Automático", grupo: "Especial" },
 ];
@@ -44,6 +46,7 @@ export const TIPOS_PROIBIDOS_EM_GRUPO = [
   TipoPergunta.GRUPO,
   TipoPergunta.UPLOAD,
   TipoPergunta.AUTOMATICO,
+  TipoPergunta.INFORMATIVO,
 ];
 
 export const ROTULO_TIPO: Record<TipoPergunta, string> = Object.fromEntries(

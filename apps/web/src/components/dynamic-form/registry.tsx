@@ -13,6 +13,8 @@ import { CampoAutomatico } from "./fields/CampoAutomatico";
 import { CampoArquivo } from "./fields/CampoArquivo";
 import { CampoMunicipio } from "./fields/CampoMunicipio";
 import { CampoGrupo } from "./fields/CampoGrupo";
+import { CampoHora } from "./fields/CampoHora";
+import { CampoInformativo } from "./fields/CampoInformativo";
 
 /** Mapa de TipoPergunta → componente MUI. */
 export const REGISTRY: Record<TipoPergunta, ComponentType<FieldProps>> = {
@@ -39,4 +41,6 @@ export const REGISTRY: Record<TipoPergunta, ComponentType<FieldProps>> = {
   [TipoPergunta.AUTOMATICO]: CampoAutomatico,
   [TipoPergunta.MUNICIPIO]: CampoMunicipio,
   [TipoPergunta.GRUPO]: CampoGrupo,
+  [TipoPergunta.HORA]: CampoHora,
+  [TipoPergunta.INFORMATIVO]: CampoInformativo,
 };

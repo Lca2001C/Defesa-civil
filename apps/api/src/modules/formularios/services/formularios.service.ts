@@ -6,18 +6,31 @@
 import { CompetenciaStatus, FormularioStatus } from '@prisma/client';
 import type { SchemaFormulario } from '@dcmg/contracts';
 import { FormulariosRepository } from '../repositories/formularios.repository';
-import { FormularioImportService } from './formulario-import.service';
+import {
+  FormularioImportService,
+  type ResultadoImportacao,
+} from './formulario-import.service';
+import { AuditoriaService } from '../../auditoria/services/auditoria.service';
 import type { PaginacaoDto } from '../../../common/dto/paginacao.dto';
 import type { CriarFormularioDto } from '../dtos/criar-formulario.dto';
 import type { AtualizarFormularioDto } from '../dtos/atualizar-formulario.dto';
 import type { CriarVersaoDto } from '../dtos/criar-versao.dto';
 import type { PublicarVersaoDto } from '../dtos/publicar-versao.dto';
 
+/** Contexto do ator para o log de importação. */
+export interface AtorImportacao {
+  atorId?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  nomeArquivo?: string;
+}
+
 @Injectable()
 export class FormulariosService {
   constructor(
     private readonly repo: FormulariosRepository,
     private readonly importService: FormularioImportService,
+    private readonly auditoria: AuditoriaService,
   ) {}
 
   // ──────────────────────────── Formulários ─────────────────────────────────
@@ -178,21 +191,57 @@ export class FormulariosService {
 
   // ──────────────────────── Importação via Excel ─────────────────────────────
 
-  /** Gera a planilha-modelo (.xlsx) para download. */
+  /** Gera a planilha-modelo (.xlsx) de exemplo (layout DCMG) para download. */
   gerarModeloImportacao(): Promise<Buffer> {
     return this.importService.gerarModelo();
   }
 
   /**
-   * Cria um formulário (v1 rascunho) a partir de uma planilha Excel. O parser
-   * valida com erros por linha; o decomporSchema revalida a estrutura inteira.
+   * Preview da importação: interpreta a planilha SEM persistir. Retorna o
+   * resumo (seções/perguntas/listas/regras), o schema e os erros amigáveis.
    */
-  async importarExcel(buffer: Buffer) {
-    const { nome, schema } = await this.importService.parsearSchema(buffer);
-    return this.repo.criarComSchema(
-      { nome, descricao: schema.descricao ?? null, categoria: 'Importado' },
+  previaImportacao(buffer: Buffer): Promise<ResultadoImportacao> {
+    return this.importService.parsear(buffer);
+  }
+
+  /**
+   * Cria um formulário NATIVO (v1 rascunho) a partir da planilha. Bloqueia se
+   * houver erros de estrutura; registra auditoria (usuário/arquivo/contagens/
+   * tempo). O decomporSchema revalida a estrutura inteira antes de gravar.
+   */
+  async importarExcel(buffer: Buffer, ator: AtorImportacao = {}) {
+    const inicio = Date.now();
+    const { nome, schema, resumo, erros } = await this.importService.parsear(buffer);
+
+    if (erros.length > 0) {
+      throw new BadRequestException({ message: 'A planilha tem pendências — corrija e reenvie.', erros });
+    }
+
+    const criado = await this.repo.criarComSchema(
+      { nome, descricao: schema.descricao ?? null, categoria: 'Importado (Excel)' },
       schema,
     );
+
+    // Log (fire-and-forget): não interrompe a importação se a auditoria falhar.
+    void this.auditoria.registrar({
+      atorId: ator.atorId ?? null,
+      acao: 'IMPORTAR_FORMULARIO',
+      entidade: 'formularios',
+      entidadeId: criado.id,
+      ip: ator.ip ?? null,
+      userAgent: ator.userAgent ?? null,
+      depois: {
+        nomeArquivo: ator.nomeArquivo ?? null,
+        nomeFormulario: nome,
+        secoes: resumo.secoes,
+        perguntas: resumo.perguntas,
+        listas: resumo.listas,
+        regras: resumo.regras,
+        duracaoMs: Date.now() - inicio,
+      },
+    });
+
+    return { ...criado, resumo };
   }
 
   // ─────────────────────── Compor schema (uso externo) ───────────────────────

@@ -1,123 +1,168 @@
-import { BadRequestException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
-import { TipoPergunta } from '@dcmg/contracts';
+import { TipoPergunta, VarianteInformativo } from '@dcmg/contracts';
 import { FormularioImportService } from './formulario-import.service';
 
-/**
- * Monta um .xlsx em memória (aba Perguntas + Instrucoes) para testar o parser
- * sem depender de arquivos externos.
- */
-const CABECALHO = [
-  'Pagina', 'Secao', 'Codigo', 'Pergunta', 'Tipo', 'Obrigatoria', 'Ajuda',
-  'Opcoes', 'PermiteOutro', 'Multipla', 'CondicionalDe', 'CondicionalValor',
-  'Grupo', 'QuantidadeDe', 'Min', 'Max',
-];
-
-async function montarXlsx(linhas: (string | number)[][], nome = 'Form Teste'): Promise<Buffer> {
+/** Monta um .xlsx multi-aba (layout DCMG) em memória para testar o parser. */
+async function montarXlsx(
+  abas: { nome: string; linhas: (string | number)[][] }[],
+  opcoes?: { listas?: [string, string[]][]; nome?: string },
+): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  const instr = wb.addWorksheet('Instrucoes');
-  instr.getCell('A1').value = 'Nome do formulário:';
-  instr.getCell('B1').value = nome;
-  const ws = wb.addWorksheet('Perguntas');
-  ws.addRow(CABECALHO);
-  for (const l of linhas) ws.addRow(l);
+  if (opcoes?.nome) {
+    const instr = wb.addWorksheet('Instrucoes');
+    instr.getCell('A1').value = 'Nome:';
+    instr.getCell('B1').value = opcoes.nome;
+  }
+  for (const aba of abas) {
+    const ws = wb.addWorksheet(aba.nome);
+    ws.addRow(['Pergunta', 'Tipo', 'Resposta']);
+    for (const l of aba.linhas) ws.addRow(l);
+  }
+  if (opcoes?.listas) {
+    const ws = wb.addWorksheet('Listas_Suspensas');
+    ws.getRow(1).values = opcoes.listas.map(([n]) => n);
+    opcoes.listas.forEach(([, opts], ci) => {
+      opts.forEach((o, ri) => {
+        ws.getCell(ri + 2, ci + 1).value = o;
+      });
+    });
+  }
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
 }
 
-// Helper para uma linha completa (16 colunas) a partir de um parcial por índice.
-function linha(vals: Partial<Record<number, string | number>>): (string | number)[] {
-  return Array.from({ length: 16 }, (_, i) => vals[i] ?? '');
-}
+const svc = new FormularioImportService();
 
-describe('FormularioImportService — parsearSchema', () => {
-  const service = new FormularioImportService();
+describe('FormularioImportService — parsear (layout DCMG)', () => {
+  it('cada aba vira uma seção, na ordem; título vira INFORMATIVO', async () => {
+    const buffer = await montarXlsx(
+      [
+        {
+          nome: '1- Identificacao',
+          linhas: [
+            ['IDENTIFICAÇÃO', 'Título', ''],
+            ['Município', 'Município', ''],
+            ['Código IBGE', 'Automático', ''],
+            ['Cargo/Função', 'Lista suspensa', ''],
+          ],
+        },
+        {
+          nome: '2- Estrutura',
+          linhas: [
+            ['Possui COMPDEC?', 'Sim / Não', ''],
+            ['↳ Ano da Lei', 'Ano', ''],
+          ],
+        },
+      ],
+      { listas: [['Cargo/Função', ['Coordenador', 'Diretor']]], nome: 'Form DCMG' },
+    );
 
-  it('importa formulário com página, condicional, grupo e "Outro(s)"', async () => {
-    const buffer = await montarXlsx([
-      // cargo com PermiteOutro (col 8 = S)
-      linha({ 0: 'P1', 1: 'Ident', 2: 'cargo', 3: 'Cargo', 4: 'LISTA_SUSPENSA', 5: 'S', 7: 'Coordenador;Diretor', 8: 'S' }),
-      // Sim/Não que abre condicional
-      linha({ 0: 'P1', 1: 'Ident', 2: 'tem_portaria', 3: 'Tem portaria?', 4: 'SIM_NAO', 5: 'S' }),
-      linha({ 0: 'P1', 1: 'Ident', 2: 'ano_portaria', 3: 'Ano', 4: 'ANO', 5: 'S', 10: 'tem_portaria', 11: 'true' }),
-      // Grupo controlado por quantidade
-      linha({ 0: 'P2', 1: 'Cursos', 2: 'qtd', 3: 'Qtos cursos?', 4: 'NUMERO', 5: 'S' }),
-      linha({ 0: 'P2', 1: 'Cursos', 2: 'cursos', 3: 'Cursos', 4: 'GRUPO', 13: 'qtd' }),
-      linha({ 0: 'P2', 1: 'Cursos', 2: 'curso_nome', 3: 'Nome', 4: 'TEXTO_CURTO', 5: 'S', 12: 'cursos' }),
-    ]);
+    const { nome, schema, resumo, erros } = await svc.parsear(buffer);
 
-    const { nome, schema } = await service.parsearSchema(buffer);
-    expect(nome).toBe('Form Teste');
+    expect(nome).toBe('Form DCMG');
+    expect(erros).toEqual([]);
     expect(schema.paginas).toHaveLength(2);
+    expect(schema.paginas[0]!.secoes[0]!.titulo).toBe('Identificacao');
+    expect(schema.paginas[1]!.secoes[0]!.titulo).toBe('Estrutura');
 
-    const p1 = schema.paginas[0]!;
-    const perguntasP1 = p1.secoes[0]!.perguntas;
-    // cargo + companheira "cargo_outro" + tem_portaria + ano_portaria
-    const codigos = perguntasP1.map((p) => p.codigo);
-    expect(codigos).toContain('cargo');
-    expect(codigos).toContain('cargo_outro');
-    const cargo = perguntasP1.find((p) => p.codigo === 'cargo')!;
-    expect(cargo.opcoes?.some((o) => o.valor === 'outro')).toBe(true);
-    const companheira = perguntasP1.find((p) => p.codigo === 'cargo_outro')!;
-    expect(companheira.obrigatorio).toBe(true);
-    expect(companheira.regras?.[0]).toMatchObject({ origemCodigo: 'cargo', valor: 'outro' });
+    const p1 = schema.paginas[0]!.secoes[0]!.perguntas;
+    const titulo = p1[0]!;
+    expect(titulo.tipo).toBe(TipoPergunta.INFORMATIVO);
+    expect(titulo.variante).toBe(VarianteInformativo.TITULO);
 
-    // Grupo com subpergunta e quantidade
-    const grupo = schema.paginas[1]!.secoes[0]!.perguntas.find((p) => p.codigo === 'cursos')!;
-    expect(grupo.tipo).toBe(TipoPergunta.GRUPO);
-    expect(grupo.quantidadeOrigemCodigo).toBe('qtd');
-    expect(grupo.perguntas?.map((s) => s.codigo)).toEqual(['curso_nome']);
+    const municipio = p1.find((p) => p.rotulo === 'Município')!;
+    expect(municipio.tipo).toBe(TipoPergunta.MUNICIPIO);
+
+    const ibge = p1.find((p) => p.rotulo === 'Código IBGE')!;
+    expect(ibge.tipo).toBe(TipoPergunta.AUTOMATICO);
+    expect(ibge.fonteAutomatica).toBe('CODIGO_IBGE');
+
+    const cargo = p1.find((p) => p.rotulo === 'Cargo/Função')!;
+    expect(cargo.tipo).toBe(TipoPergunta.LISTA_SUSPENSA);
+    expect(cargo.opcoes?.map((o) => o.rotulo)).toEqual(['Coordenador', 'Diretor']);
+
+    // Pergunta-filha vira condicional da anterior (Sim/Não → RADIO com "sim").
+    const p2 = schema.paginas[1]!.secoes[0]!.perguntas;
+    const possui = p2.find((p) => p.rotulo === 'Possui COMPDEC?')!;
+    expect(possui.tipo).toBe(TipoPergunta.RADIO);
+    const filha = p2.find((p) => p.rotulo === 'Ano da Lei')!;
+    expect(filha.regras?.[0]).toMatchObject({ origemCodigo: possui.codigo, valor: 'sim' });
+
+    expect(resumo.secoes).toBe(2);
+    expect(resumo.listas).toBe(1);
+    expect(resumo.regras).toBe(1);
   });
 
-  it('rejeita tipo inválido com número da linha', async () => {
+  it('Sim / Não / N.A. vira RADIO com 3 opções', async () => {
     const buffer = await montarXlsx([
-      linha({ 0: 'P1', 1: 'S', 2: 'x', 3: 'Campo', 4: 'TIPO_ERRADO', 5: 'N' }),
+      { nome: 'S', linhas: [['Tem PLANCON?', 'Sim / Não / N.A.', '']] },
     ]);
-    await expect(service.parsearSchema(buffer)).rejects.toMatchObject({
-      constructor: BadRequestException,
-      response: { erros: [{ linha: 2, mensagem: expect.stringContaining('Tipo inválido') }] },
-    });
+    const { schema } = await svc.parsear(buffer);
+    const p = schema.paginas[0]!.secoes[0]!.perguntas[0]!;
+    expect(p.tipo).toBe(TipoPergunta.RADIO);
+    expect(p.opcoes?.map((o) => o.valor)).toEqual(['sim', 'nao', 'nao_se_aplica']);
   });
 
-  it('rejeita código duplicado apontando a linha', async () => {
+  it('linhas ☐ viram um grupo repetível de itens', async () => {
     const buffer = await montarXlsx([
-      linha({ 0: 'P1', 1: 'S', 2: 'dup', 3: 'A', 4: 'TEXTO_CURTO' }),
-      linha({ 0: 'P1', 1: 'S', 2: 'dup', 3: 'B', 4: 'TEXTO_CURTO' }),
+      {
+        nome: 'Infraestrutura',
+        linhas: [
+          ['Equipamentos', 'Instrução', ''],
+          ['☐ Drone', 'Sim / Não', ''],
+          ['☐ Gerador', 'Sim / Não', ''],
+        ],
+      },
     ]);
-    await expect(service.parsearSchema(buffer)).rejects.toMatchObject({
-      response: { erros: [{ linha: 3, mensagem: expect.stringContaining('duplicado') }] },
-    });
+    const { schema } = await svc.parsear(buffer);
+    const perguntas = schema.paginas[0]!.secoes[0]!.perguntas;
+    const grupo = perguntas.find((p) => p.tipo === TipoPergunta.GRUPO)!;
+    expect(grupo).toBeDefined();
+    expect(grupo.perguntas?.map((s) => s.rotulo)).toEqual(['Item', 'Possui?', 'Quantidade', 'Observação']);
+    expect(grupo.ajuda).toContain('Drone');
   });
 
-  it('rejeita Grupo referenciando código inexistente', async () => {
+  it('aba com "Efetivo" no nome vira um grupo repetível único', async () => {
     const buffer = await montarXlsx([
-      linha({ 0: 'P1', 1: 'S', 2: 'sub', 3: 'Sub', 4: 'TEXTO_CURTO', 12: 'grupo_fantasma' }),
+      {
+        nome: '3- Efetivo',
+        linhas: [
+          ['Primeiro nome', 'Texto', ''],
+          ['CPF', 'CPF', ''],
+          ['Cargo', 'Texto', ''],
+        ],
+      },
     ]);
-    await expect(service.parsearSchema(buffer)).rejects.toMatchObject({
-      response: { erros: [{ linha: 2, mensagem: expect.stringContaining('não existe') }] },
-    });
+    const { schema } = await svc.parsear(buffer);
+    const perguntas = schema.paginas[0]!.secoes[0]!.perguntas;
+    expect(perguntas).toHaveLength(1);
+    expect(perguntas[0]!.tipo).toBe(TipoPergunta.GRUPO);
+    expect(perguntas[0]!.perguntas?.map((s) => s.rotulo)).toEqual(['Primeiro nome', 'CPF', 'Cargo']);
   });
 
-  it('rejeita QuantidadeDe que não é NUMERO', async () => {
+  it('reporta tipo desconhecido como erro amigável (sem quebrar)', async () => {
     const buffer = await montarXlsx([
-      linha({ 0: 'P1', 1: 'S', 2: 'txt', 3: 'Texto', 4: 'TEXTO_CURTO' }),
-      linha({ 0: 'P1', 1: 'S', 2: 'g', 3: 'Grupo', 4: 'GRUPO', 13: 'txt' }),
-      linha({ 0: 'P1', 1: 'S', 2: 'gsub', 3: 'Sub', 4: 'TEXTO_CURTO', 12: 'g' }),
+      { nome: 'S', linhas: [['Campo estranho', 'Coisa Invalida', '']] },
     ]);
-    await expect(service.parsearSchema(buffer)).rejects.toMatchObject({
-      response: { erros: expect.arrayContaining([expect.objectContaining({ linha: 3 })]) },
-    });
+    const { erros } = await svc.parsear(buffer);
+    expect(erros.some((e) => e.includes('não reconhecido'))).toBe(true);
+  });
+
+  it('lista suspensa sem correspondência gera erro amigável', async () => {
+    const buffer = await montarXlsx([
+      { nome: 'S', linhas: [['Sem lista', 'Lista suspensa', '']] },
+    ]);
+    const { erros } = await svc.parsear(buffer);
+    expect(erros.some((e) => e.includes('sem correspondência'))).toBe(true);
   });
 });
 
 describe('FormularioImportService — gerarModelo', () => {
-  const service = new FormularioImportService();
-
-  it('gera um .xlsx válido cujo próprio modelo é reimportável', async () => {
-    const modelo = await service.gerarModelo();
+  it('gera um .xlsx cujo próprio modelo é reimportável sem erros', async () => {
+    const modelo = await svc.gerarModelo();
     expect(modelo.length).toBeGreaterThan(0);
-    // O modelo (com exemplos) deve ser um formulário válido ao reimportar.
-    const { schema } = await service.parsearSchema(modelo);
-    expect(schema.paginas.length).toBeGreaterThan(0);
+    const { schema, erros } = await svc.parsear(modelo);
+    expect(schema.paginas.length).toBeGreaterThanOrEqual(4);
+    expect(erros).toEqual([]);
   });
 });

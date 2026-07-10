@@ -3,8 +3,10 @@ import { FormulariosController } from './controllers/formularios.controller';
 import { FormulariosService } from './services/formularios.service';
 import { FormularioImportService } from './services/formulario-import.service';
 import { FormulariosRepository } from './repositories/formularios.repository';
+import { AuditoriaModule } from '../auditoria/auditoria.module';
 
 @Module({
+  imports: [AuditoriaModule],
   controllers: [FormulariosController],
   providers: [FormulariosService, FormularioImportService, FormulariosRepository],
   exports: [FormulariosService],

@@ -15,6 +15,7 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
   TipoPergunta,
+  VarianteInformativo,
   type OpcaoPergunta,
   type Pergunta,
   type RegraCondicional,
@@ -187,6 +188,22 @@ export function PerguntaEditor({ pergunta, outras, onChange, emGrupo = false }: 
               {f.rotulo}
             </MenuItem>
           ))}
+        </TextField>
+      )}
+
+      {pergunta.tipo === TipoPergunta.INFORMATIVO && (
+        <TextField
+          select
+          label="Aparência"
+          value={pergunta.variante ?? VarianteInformativo.DESCRICAO}
+          onChange={(e) => set({ variante: e.target.value as VarianteInformativo })}
+          size="small"
+          helperText="Componente visual (não é um campo de resposta). O texto vem do rótulo."
+          sx={{ width: "100%", maxWidth: 280 }}
+        >
+          <MenuItem value={VarianteInformativo.TITULO}>Título</MenuItem>
+          <MenuItem value={VarianteInformativo.DESCRICAO}>Descrição</MenuItem>
+          <MenuItem value={VarianteInformativo.ALERTA}>Alerta</MenuItem>
         </TextField>
       )}
 

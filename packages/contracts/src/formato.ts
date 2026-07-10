@@ -57,6 +57,10 @@ export function formatarResposta(pergunta: Pergunta, valor: unknown): string {
     case TipoPergunta.UPLOAD:
       return 'Arquivo anexado';
 
+    // INFORMATIVO nao possui resposta (componente visual).
+    case TipoPergunta.INFORMATIVO:
+      return '—';
+
     default:
       return String(valor);
   }

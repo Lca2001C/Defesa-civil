@@ -143,9 +143,24 @@ export function DynamicForm({ schema, onSubmit, carregando = false, defaultValue
               <Grid container spacing={2}>
                 {camposVisiveis.map((campo) => {
                   const Componente = REGISTRY[campo.tipo];
-                  // Grupos repetíveis e textos longos ocupam a largura inteira.
+                  // Grupos, textos longos e informativos ocupam a largura inteira.
                   const larguraTotal =
-                    campo.tipo === TipoPergunta.GRUPO || campo.tipo === TipoPergunta.TEXTO_LONGO;
+                    campo.tipo === TipoPergunta.GRUPO ||
+                    campo.tipo === TipoPergunta.TEXTO_LONGO ||
+                    campo.tipo === TipoPergunta.INFORMATIVO;
+
+                  // INFORMATIVO não é campo de resposta: renderiza sem Controller.
+                  if (campo.tipo === TipoPergunta.INFORMATIVO) {
+                    return (
+                      <Grid key={campo.codigo} item xs={12}>
+                        <Componente
+                          campo={campo}
+                          field={{ name: campo.codigo, value: undefined, onChange: () => {}, onBlur: () => {}, ref: () => {} } as never}
+                        />
+                      </Grid>
+                    );
+                  }
+
                   return (
                     <Grid key={campo.codigo} item xs={12} sm={larguraTotal ? 12 : 6}>
                       <Controller
